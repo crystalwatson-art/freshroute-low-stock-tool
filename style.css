@@ -1,0 +1,53 @@
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f4f7f5;
+  margin: 0;
+  padding: 20px;
+}
+
+.container {
+  max-width: 500px;
+  margin: 40px auto;
+  background-color: white;
+  padding: 25px;
+  border-radius: 10px;
+}
+
+h1,
+h2 {
+  color: #234f3d;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+input {
+  padding: 10px;
+  font-size: 16px;
+}
+
+button {
+  margin-top: 10px;
+  padding: 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+#stock-result {
+  margin-top: 10px;
+  padding: 15px;
+  background-color: #eeeeee;
+  border-radius: 6px;
+}
+#stock-result.low-stock {
+  background-color: #ffd6d6;
+  color: #8b0000;
+}
+
+#stock-result.enough-stock {
+  background-color: #d9f7df;
+  color: #1f6b35;
+}

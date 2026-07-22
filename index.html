@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreshRoute Low-Stock Tool</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <main class="container">
+    <h1>FreshRoute Low-Stock Tool</h1>
+    <p>Enter a product to see if it needs to be reordered.</p>
+
+    <form id="stock-form">
+      <label for="product-name">Product name</label>
+      <input id="product-name" type="text" required>
+
+      <label for="current-stock">Current stock</label>
+      <input id="current-stock" type="number" min="0" required>
+
+      <label for="reorder-level">Reorder level</label>
+      <input id="reorder-level" type="number" min="0" required>
+
+      <button type="submit">Check Stock</button>
+    </form>
+
+    <section>
+      <h2>Stock Result</h2>
+      <div id="stock-result">
+        No product checked yet.
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
