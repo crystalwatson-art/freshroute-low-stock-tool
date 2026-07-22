@@ -13,24 +13,22 @@
     <p>Enter a product to see if it needs to be reordered.</p>
 
     <form id="stock-form">
-      <label for="product-name">Product name</label>
-      <input id="product-name" type="text" required>
+  <label for="product-name">Product name</label>
+  <input id="product-name" type="text">
 
-      <label for="current-stock">Current stock</label>
-      <input id="current-stock" type="number" min="0" required>
+  <label for="current-stock">Current stock</label>
+  <input id="current-stock" type="number" min="0">
 
-      <label for="reorder-level">Reorder level</label>
-      <input id="reorder-level" type="number" min="0" required>
+  <label for="reorder-level">Reorder level</label>
+  <input id="reorder-level" type="number" min="0">
 
-      <button type="submit">Check Stock</button>
-    </form>
+  <button type="submit">Add Product</button>
+</form>
 
-    <section>
-      <h2>Stock Result</h2>
-      <div id="stock-result">
-        No product checked yet.
-      </div>
-    </section>
+<section>
+  <h2>Stock Results</h2>
+  <div id="stock-result"></div>
+</section>
   </main>
 
   <script src="script.js"></script>
