@@ -34,3 +34,7 @@ document.getElementById("stock-form").addEventListener("submit", function (event
   event.preventDefault();
   addProduct();
 });
+function clearList() {
+  const resultsArea = document.getElementById("stock-result");
+  resultsArea.innerHTML = "";
+}
