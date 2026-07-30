@@ -3,33 +3,106 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FreshRoute Low-Stock Tool</title>
+
+  <title>FreshRoute Inventory Dashboard</title>
+
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
   <main class="container">
-    <h1>FreshRoute Low-Stock Tool</h1>
-    <p>Enter a product to see if it needs to be reordered.</p>
 
-    <form id="stock-form">
-  <label for="product-name">Product name</label>
-  <input id="product-name" type="text">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Inventory Coordinator Dashboard</p>
+        <h1>FreshRoute</h1>
+        <p class="subtitle">
+          See which dairy products need attention without reading every row.
+        </p>
+      </div>
 
-  <label for="current-stock">Current stock</label>
-  <input id="current-stock" type="number" min="0">
+      <button id="refresh-data" type="button">
+        Refresh Data
+      </button>
+    </header>
 
-  <label for="reorder-level">Reorder level</label>
-  <input id="reorder-level" type="number" min="0">
+    <section class="summary-grid" aria-label="Inventory summary">
+      <article class="summary-card">
+        <span>Total Products</span>
+        <strong id="total-products">0</strong>
+      </article>
 
-  <button type="submit">Add Product</button>
-  <button type="button" onclick="clearList()">Clear All</button>
-</form>
+      <article class="summary-card urgent">
+        <span>Low Stock</span>
+        <strong id="low-stock-count">0</strong>
+      </article>
 
-<section>
-  <h2>Stock Results</h2>
-  <div id="stock-result"></div>
-</section>
+      <article class="summary-card warning">
+        <span>Reorder Soon</span>
+        <strong id="reorder-soon-count">0</strong>
+      </article>
+
+      <article class="summary-card safe">
+        <span>Stock Level Good</span>
+        <strong id="good-stock-count">0</strong>
+      </article>
+    </section>
+
+    <section class="controls" aria-label="Dashboard controls">
+      <div>
+        <label for="status-filter">Filter by status</label>
+
+        <select id="status-filter">
+          <option value="all">All Products</option>
+          <option value="low-stock">Low Stock</option>
+          <option value="reorder-soon">Reorder Soon</option>
+          <option value="stock-level-good">Stock Level Good</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="product-search">Search products</label>
+
+        <input
+          id="product-search"
+          type="search"
+          placeholder="Search by product or brand"
+        >
+      </div>
+    </section>
+
+    <section class="dashboard-section">
+      <div class="section-heading">
+        <div>
+          <h2>Priority Inventory</h2>
+          <p id="results-summary">Loading inventory data...</p>
+        </div>
+      </div>
+
+      <div id="loading-message" class="message">
+        Loading FreshRoute data...
+      </div>
+
+      <div id="error-message" class="message error-message" hidden></div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Product</th>
+              <th>Brand</th>
+              <th>Current Stock</th>
+              <th>Minimum Level</th>
+              <th>Days to Expiry</th>
+            </tr>
+          </thead>
+
+          <tbody id="inventory-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
   </main>
 
   <script src="script.js"></script>
