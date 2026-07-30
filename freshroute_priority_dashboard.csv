@@ -1,0 +1,425 @@
+product_name,brand,quantity_in_stock_literskg,days_to_expiry,low_stock_flag,expiring_soon_flag,critical_flag
+Buttermilk,Sudha,10,-1629,True,False,False
+Curd,Raj,13,-1621,True,False,False
+Ice Cream,Dodla Dairy,17,-1615,True,False,False
+Paneer,Raj,16,-1603,True,False,False
+Lassi,Mother Dairy,9,-1599,True,False,False
+Butter,Amul,8,-1595,True,False,False
+Yogurt,Palle2patnam,12,-1587,True,False,False
+Milk,Mother Dairy,2,-1583,True,False,False
+Butter,Parag Milk Foods,13,-1582,True,False,False
+Lassi,Mother Dairy,14,-1575,True,False,False
+Lassi,Raj,7,-1573,True,False,False
+Buttermilk,Mother Dairy,17,-1569,True,False,False
+Milk,Mother Dairy,17,-1559,True,False,False
+Buttermilk,Sudha,14,-1559,True,False,False
+Buttermilk,Mother Dairy,5,-1554,True,False,False
+Butter,Warana,1,-1544,True,False,False
+Lassi,Mother Dairy,4,-1531,True,False,False
+Ice Cream,Dodla Dairy,7,-1527,True,False,False
+Curd,Raj,7,-1526,True,False,False
+Buttermilk,Amul,8,-1519,True,False,False
+Lassi,Mother Dairy,5,-1517,True,False,False
+Milk,Raj,4,-1517,True,False,False
+Curd,Raj,15,-1516,True,False,False
+Ice Cream,Palle2patnam,1,-1511,True,False,False
+Cheese,Passion Cheese,9,-1506,True,False,False
+Ghee,Mother Dairy,5,-1506,True,False,False
+Paneer,Amul,2,-1504,True,False,False
+Paneer,Raj,9,-1499,True,False,False
+Buttermilk,Mother Dairy,7,-1493,True,False,False
+Yogurt,Amul,19,-1492,True,False,False
+Curd,Amul,15,-1491,True,False,False
+Lassi,Sudha,16,-1491,True,False,False
+Ice Cream,Dodla Dairy,17,-1489,True,False,False
+Butter,Parag Milk Foods,10,-1487,True,False,False
+Lassi,Raj,19,-1485,True,False,False
+Yogurt,Palle2patnam,1,-1484,True,False,False
+Buttermilk,Mother Dairy,7,-1477,True,False,False
+Milk,Mother Dairy,11,-1470,True,False,False
+Paneer,Amul,9,-1468,True,False,False
+Butter,Parag Milk Foods,4,-1466,True,False,False
+Milk,Sudha,8,-1462,True,False,False
+Lassi,Sudha,14,-1460,True,False,False
+Curd,Amul,18,-1458,True,False,False
+Milk,Amul,13,-1452,True,False,False
+Paneer,Sudha,7,-1451,True,False,False
+Ice Cream,Palle2patnam,3,-1447,True,False,False
+Cheese,Britannia Industries,10,-1445,True,False,False
+Yogurt,Mother Dairy,4,-1445,True,False,False
+Curd,Raj,13,-1443,True,False,False
+Milk,Raj,14,-1440,True,False,False
+Yogurt,Dodla Dairy,6,-1437,True,False,False
+Cheese,Passion Cheese,4,-1436,True,False,False
+Paneer,Raj,9,-1431,True,False,False
+Curd,Amul,4,-1418,True,False,False
+Paneer,Amul,2,-1417,True,False,False
+Paneer,Sudha,5,-1414,True,False,False
+Butter,Mother Dairy,13,-1410,True,False,False
+Curd,Raj,0,-1408,True,False,False
+Butter,Parag Milk Foods,18,-1406,True,False,False
+Curd,Raj,14,-1398,True,False,False
+Lassi,Amul,10,-1396,True,False,False
+Lassi,Amul,16,-1392,True,False,False
+Ice Cream,Mother Dairy,19,-1390,True,False,False
+Lassi,Raj,9,-1383,True,False,False
+Ice Cream,Dodla Dairy,1,-1378,True,False,False
+Buttermilk,Raj,19,-1375,True,False,False
+Paneer,Amul,2,-1369,True,False,False
+Yogurt,Amul,18,-1367,True,False,False
+Curd,Mother Dairy,12,-1361,True,False,False
+Paneer,Mother Dairy,7,-1353,True,False,False
+Curd,Sudha,0,-1351,True,False,False
+Curd,Sudha,9,-1346,True,False,False
+Ice Cream,Amul,16,-1343,True,False,False
+Buttermilk,Raj,6,-1343,True,False,False
+Butter,Amul,12,-1338,True,False,False
+Lassi,Raj,6,-1338,True,False,False
+Buttermilk,Mother Dairy,4,-1334,True,False,False
+Paneer,Amul,0,-1330,True,False,False
+Butter,Amul,5,-1329,True,False,False
+Buttermilk,Sudha,7,-1326,True,False,False
+Yogurt,Palle2patnam,9,-1310,True,False,False
+Milk,Sudha,8,-1305,True,False,False
+Buttermilk,Mother Dairy,7,-1305,True,False,False
+Lassi,Sudha,4,-1302,True,False,False
+Butter,Parag Milk Foods,3,-1301,True,False,False
+Butter,Parag Milk Foods,13,-1297,True,False,False
+Milk,Mother Dairy,14,-1289,True,False,False
+Ghee,Mother Dairy,14,-1288,True,False,False
+Paneer,Raj,18,-1287,True,False,False
+Paneer,Raj,8,-1283,True,False,False
+Ice Cream,Amul,11,-1280,True,False,False
+Milk,Amul,2,-1279,True,False,False
+Buttermilk,Raj,4,-1277,True,False,False
+Buttermilk,Sudha,10,-1277,True,False,False
+Lassi,Raj,8,-1275,True,False,False
+Ghee,Raj,5,-1273,True,False,False
+Lassi,Amul,13,-1260,True,False,False
+Curd,Amul,16,-1259,True,False,False
+Ice Cream,Amul,11,-1253,True,False,False
+Yogurt,Amul,7,-1251,True,False,False
+Yogurt,Dodla Dairy,9,-1246,True,False,False
+Milk,Sudha,3,-1237,True,False,False
+Yogurt,Dodla Dairy,18,-1235,True,False,False
+Milk,Raj,7,-1220,True,False,False
+Curd,Amul,15,-1215,True,False,False
+Paneer,Sudha,18,-1214,True,False,False
+Buttermilk,Mother Dairy,3,-1207,True,False,False
+Yogurt,Dodla Dairy,10,-1204,True,False,False
+Ice Cream,Mother Dairy,12,-1203,True,False,False
+Curd,Raj,16,-1200,True,False,False
+Cheese,Dynamix Dairies,6,-1200,True,False,False
+Ghee,Mother Dairy,7,-1199,True,False,False
+Ghee,Raj,2,-1195,True,False,False
+Butter,Mother Dairy,12,-1192,True,False,False
+Yogurt,Dodla Dairy,16,-1192,True,False,False
+Ice Cream,Mother Dairy,13,-1192,True,False,False
+Paneer,Amul,10,-1180,True,False,False
+Ghee,Mother Dairy,16,-1176,True,False,False
+Ice Cream,Dodla Dairy,2,-1175,True,False,False
+Buttermilk,Mother Dairy,4,-1168,True,False,False
+Milk,Amul,3,-1167,True,False,False
+Ghee,Mother Dairy,7,-1166,True,False,False
+Lassi,Amul,7,-1166,True,False,False
+Ghee,Amul,7,-1165,True,False,False
+Yogurt,Dodla Dairy,1,-1164,True,False,False
+Buttermilk,Sudha,15,-1164,True,False,False
+Ghee,Raj,15,-1163,True,False,False
+Cheese,Dynamix Dairies,1,-1157,True,False,False
+Buttermilk,Sudha,3,-1155,True,False,False
+Ghee,Mother Dairy,15,-1151,True,False,False
+Buttermilk,Raj,2,-1150,True,False,False
+Lassi,Mother Dairy,16,-1143,True,False,False
+Curd,Amul,15,-1140,True,False,False
+Cheese,Passion Cheese,11,-1139,True,False,False
+Milk,Sudha,9,-1129,True,False,False
+Yogurt,Mother Dairy,3,-1129,True,False,False
+Ice Cream,Mother Dairy,13,-1127,True,False,False
+Curd,Raj,7,-1126,True,False,False
+Paneer,Mother Dairy,9,-1121,True,False,False
+Ice Cream,Dodla Dairy,7,-1119,True,False,False
+Yogurt,Palle2patnam,8,-1116,True,False,False
+Ghee,Amul,16,-1116,True,False,False
+Buttermilk,Raj,8,-1115,True,False,False
+Ghee,Sudha,8,-1107,True,False,False
+Cheese,Dynamix Dairies,14,-1107,True,False,False
+Lassi,Raj,16,-1096,True,False,False
+Ghee,Raj,17,-1093,True,False,False
+Ghee,Amul,2,-1093,True,False,False
+Ice Cream,Dodla Dairy,2,-1092,True,False,False
+Yogurt,Mother Dairy,1,-1090,True,False,False
+Paneer,Sudha,16,-1089,True,False,False
+Cheese,Passion Cheese,14,-1088,True,False,False
+Lassi,Raj,17,-1085,True,False,False
+Lassi,Amul,8,-1080,True,False,False
+Milk,Raj,10,-1079,True,False,False
+Cheese,Britannia Industries,0,-1077,True,False,False
+Ghee,Sudha,1,-1076,True,False,False
+Milk,Amul,19,-1075,True,False,False
+Ice Cream,Amul,13,-1075,True,False,False
+Curd,Sudha,5,-1073,True,False,False
+Lassi,Sudha,6,-1073,True,False,False
+Lassi,Sudha,18,-1071,True,False,False
+Lassi,Mother Dairy,8,-1071,True,False,False
+Ghee,Mother Dairy,10,-1064,True,False,False
+Curd,Mother Dairy,10,-1062,True,False,False
+Ice Cream,Mother Dairy,9,-1059,True,False,False
+Yogurt,Amul,4,-1054,True,False,False
+Milk,Sudha,10,-1053,True,False,False
+Yogurt,Mother Dairy,5,-1049,True,False,False
+Paneer,Mother Dairy,6,-1047,True,False,False
+Buttermilk,Sudha,8,-1043,True,False,False
+Buttermilk,Amul,1,-1034,True,False,False
+Ice Cream,Mother Dairy,9,-1031,True,False,False
+Curd,Amul,14,-1026,True,False,False
+Ghee,Sudha,5,-1024,True,False,False
+Cheese,Amul,5,-1016,True,False,False
+Lassi,Raj,15,-1012,True,False,False
+Yogurt,Amul,0,-1009,True,False,False
+Cheese,Dynamix Dairies,13,-1008,True,False,False
+Cheese,Dynamix Dairies,6,-1008,True,False,False
+Lassi,Mother Dairy,14,-1007,True,False,False
+Butter,Parag Milk Foods,3,-1005,True,False,False
+Buttermilk,Raj,2,-999,True,False,False
+Yogurt,Dodla Dairy,7,-998,True,False,False
+Butter,Mother Dairy,12,-996,True,False,False
+Yogurt,Dodla Dairy,2,-991,True,False,False
+Yogurt,Amul,17,-990,True,False,False
+Ghee,Raj,1,-985,True,False,False
+Milk,Raj,10,-982,True,False,False
+Curd,Raj,18,-981,True,False,False
+Butter,Mother Dairy,7,-981,True,False,False
+Cheese,Passion Cheese,16,-975,True,False,False
+Yogurt,Dodla Dairy,11,-974,True,False,False
+Milk,Sudha,16,-968,True,False,False
+Curd,Sudha,8,-960,True,False,False
+Curd,Mother Dairy,2,-957,True,False,False
+Ice Cream,Mother Dairy,9,-957,True,False,False
+Curd,Sudha,1,-953,True,False,False
+Paneer,Raj,8,-952,True,False,False
+Yogurt,Dodla Dairy,3,-951,True,False,False
+Lassi,Mother Dairy,12,-948,True,False,False
+Ice Cream,Mother Dairy,10,-938,True,False,False
+Butter,Warana,1,-932,True,False,False
+Curd,Sudha,1,-930,True,False,False
+Buttermilk,Mother Dairy,2,-924,True,False,False
+Curd,Amul,17,-922,True,False,False
+Ghee,Sudha,18,-922,True,False,False
+Ghee,Raj,1,-921,True,False,False
+Buttermilk,Sudha,9,-920,True,False,False
+Ice Cream,Palle2patnam,9,-918,True,False,False
+Milk,Raj,8,-917,True,False,False
+Butter,Mother Dairy,6,-916,True,False,False
+Paneer,Amul,8,-915,True,False,False
+Curd,Sudha,1,-912,True,False,False
+Cheese,Passion Cheese,15,-907,True,False,False
+Buttermilk,Mother Dairy,1,-906,True,False,False
+Buttermilk,Amul,2,-904,True,False,False
+Yogurt,Palle2patnam,1,-895,True,False,False
+Buttermilk,Sudha,0,-895,True,False,False
+Ice Cream,Mother Dairy,8,-892,True,False,False
+Yogurt,Dodla Dairy,17,-892,True,False,False
+Paneer,Amul,10,-889,True,False,False
+Curd,Amul,0,-888,True,False,False
+Cheese,Dynamix Dairies,7,-886,True,False,False
+Ghee,Amul,14,-877,True,False,False
+Paneer,Sudha,14,-876,True,False,False
+Buttermilk,Mother Dairy,5,-875,True,False,False
+Lassi,Sudha,18,-868,True,False,False
+Lassi,Amul,15,-859,True,False,False
+Buttermilk,Amul,10,-859,True,False,False
+Curd,Amul,11,-857,True,False,False
+Yogurt,Dodla Dairy,14,-853,True,False,False
+Paneer,Sudha,10,-851,True,False,False
+Ice Cream,Dodla Dairy,10,-846,True,False,False
+Curd,Sudha,1,-845,True,False,False
+Lassi,Amul,18,-845,True,False,False
+Milk,Raj,7,-845,True,False,False
+Milk,Raj,13,-842,True,False,False
+Buttermilk,Amul,8,-836,True,False,False
+Curd,Sudha,7,-836,True,False,False
+Butter,Mother Dairy,8,-833,True,False,False
+Milk,Mother Dairy,13,-828,True,False,False
+Paneer,Raj,4,-823,True,False,False
+Lassi,Amul,17,-823,True,False,False
+Butter,Amul,9,-816,True,False,False
+Ghee,Raj,10,-804,True,False,False
+Butter,Parag Milk Foods,11,-804,True,False,False
+Buttermilk,Sudha,14,-799,True,False,False
+Cheese,Britannia Industries,15,-798,True,False,False
+Paneer,Raj,15,-798,True,False,False
+Buttermilk,Sudha,11,-789,True,False,False
+Yogurt,Mother Dairy,2,-784,True,False,False
+Ghee,Raj,10,-783,True,False,False
+Yogurt,Dodla Dairy,11,-772,True,False,False
+Cheese,Passion Cheese,2,-770,True,False,False
+Yogurt,Amul,5,-770,True,False,False
+Curd,Amul,15,-763,True,False,False
+Paneer,Sudha,7,-756,True,False,False
+Paneer,Sudha,8,-755,True,False,False
+Ghee,Raj,4,-754,True,False,False
+Buttermilk,Sudha,1,-752,True,False,False
+Paneer,Mother Dairy,1,-748,True,False,False
+Milk,Mother Dairy,8,-747,True,False,False
+Curd,Sudha,12,-744,True,False,False
+Cheese,Dynamix Dairies,3,-740,True,False,False
+Cheese,Amul,2,-740,True,False,False
+Ice Cream,Dodla Dairy,4,-738,True,False,False
+Yogurt,Amul,13,-735,True,False,False
+Paneer,Amul,14,-733,True,False,False
+Milk,Amul,13,-727,True,False,False
+Yogurt,Amul,16,-724,True,False,False
+Butter,Parag Milk Foods,7,-722,True,False,False
+Yogurt,Mother Dairy,15,-721,True,False,False
+Cheese,Britannia Industries,15,-714,True,False,False
+Ghee,Mother Dairy,4,-710,True,False,False
+Ghee,Amul,0,-706,True,False,False
+Paneer,Mother Dairy,7,-702,True,False,False
+Yogurt,Palle2patnam,5,-699,True,False,False
+Ghee,Raj,3,-696,True,False,False
+Yogurt,Mother Dairy,1,-695,True,False,False
+Lassi,Amul,16,-688,True,False,False
+Yogurt,Amul,8,-685,True,False,False
+Ice Cream,Amul,15,-679,True,False,False
+Paneer,Amul,9,-678,True,False,False
+Lassi,Mother Dairy,4,-677,True,False,False
+Butter,Parag Milk Foods,10,-671,True,False,False
+Butter,Mother Dairy,4,-668,True,False,False
+Milk,Amul,15,-665,True,False,False
+Milk,Mother Dairy,6,-664,True,False,False
+Lassi,Mother Dairy,9,-664,True,False,False
+Butter,Parag Milk Foods,10,-657,True,False,False
+Ghee,Amul,2,-657,True,False,False
+Cheese,Passion Cheese,2,-656,True,False,False
+Buttermilk,Amul,1,-653,True,False,False
+Lassi,Mother Dairy,16,-652,True,False,False
+Milk,Amul,13,-648,True,False,False
+Ghee,Sudha,17,-647,True,False,False
+Yogurt,Amul,4,-645,True,False,False
+Lassi,Sudha,1,-641,True,False,False
+Milk,Mother Dairy,18,-633,True,False,False
+Ice Cream,Mother Dairy,6,-628,True,False,False
+Ghee,Sudha,3,-624,True,False,False
+Yogurt,Palle2patnam,5,-616,True,False,False
+Lassi,Raj,1,-609,True,False,False
+Butter,Warana,0,-606,True,False,False
+Paneer,Raj,7,-602,True,False,False
+Milk,Raj,15,-600,True,False,False
+Lassi,Raj,10,-595,True,False,False
+Yogurt,Amul,5,-593,True,False,False
+Milk,Amul,4,-593,True,False,False
+Milk,Sudha,8,-590,True,False,False
+Curd,Sudha,8,-588,True,False,False
+Milk,Amul,2,-586,True,False,False
+Milk,Raj,6,-585,True,False,False
+Lassi,Amul,5,-583,True,False,False
+Cheese,Britannia Industries,6,-579,True,False,False
+Lassi,Sudha,4,-576,True,False,False
+Curd,Amul,2,-572,True,False,False
+Yogurt,Palle2patnam,1,-568,True,False,False
+Lassi,Raj,2,-556,True,False,False
+Yogurt,Dodla Dairy,11,-552,True,False,False
+Paneer,Sudha,1,-545,True,False,False
+Curd,Sudha,0,-543,True,False,False
+Curd,Amul,4,-542,True,False,False
+Ice Cream,Mother Dairy,5,-539,True,False,False
+Curd,Amul,11,-536,True,False,False
+Milk,Mother Dairy,1,-532,True,False,False
+Yogurt,Mother Dairy,17,-530,True,False,False
+Milk,Sudha,12,-521,True,False,False
+Ice Cream,Palle2patnam,1,-519,True,False,False
+Buttermilk,Amul,8,-516,True,False,False
+Cheese,Britannia Industries,9,-515,True,False,False
+Lassi,Raj,14,-511,True,False,False
+Paneer,Mother Dairy,13,-508,True,False,False
+Butter,Mother Dairy,18,-505,True,False,False
+Cheese,Dynamix Dairies,17,-504,True,False,False
+Ice Cream,Mother Dairy,10,-503,True,False,False
+Ghee,Amul,17,-503,True,False,False
+Yogurt,Amul,3,-502,True,False,False
+Paneer,Mother Dairy,0,-501,True,False,False
+Milk,Sudha,16,-490,True,False,False
+Ice Cream,Amul,5,-483,True,False,False
+Butter,Parag Milk Foods,1,-475,True,False,False
+Paneer,Raj,4,-471,True,False,False
+Buttermilk,Amul,14,-461,True,False,False
+Ghee,Raj,17,-455,True,False,False
+Butter,Parag Milk Foods,2,-455,True,False,False
+Ghee,Raj,2,-454,True,False,False
+Milk,Raj,12,-454,True,False,False
+Ghee,Mother Dairy,5,-452,True,False,False
+Lassi,Amul,1,-441,True,False,False
+Butter,Amul,2,-440,True,False,False
+Buttermilk,Amul,11,-433,True,False,False
+Yogurt,Palle2patnam,0,-424,True,False,False
+Buttermilk,Raj,13,-422,True,False,False
+Ice Cream,Dodla Dairy,6,-421,True,False,False
+Buttermilk,Sudha,0,-420,True,False,False
+Lassi,Sudha,19,-418,True,False,False
+Paneer,Raj,7,-417,True,False,False
+Lassi,Amul,10,-411,True,False,False
+Ghee,Mother Dairy,13,-399,True,False,False
+Ghee,Sudha,7,-390,True,False,False
+Ice Cream,Palle2patnam,17,-389,True,False,False
+Paneer,Raj,19,-385,True,False,False
+Butter,Parag Milk Foods,3,-379,True,False,False
+Buttermilk,Raj,14,-373,True,False,False
+Milk,Amul,10,-371,True,False,False
+Ice Cream,Mother Dairy,6,-368,True,False,False
+Yogurt,Dodla Dairy,0,-366,True,False,False
+Yogurt,Amul,10,-365,True,False,False
+Ghee,Raj,8,-364,True,False,False
+Yogurt,Palle2patnam,14,-357,True,False,False
+Ghee,Sudha,9,-342,True,False,False
+Milk,Sudha,2,-338,True,False,False
+Lassi,Sudha,4,-335,True,False,False
+Buttermilk,Sudha,0,-333,True,False,False
+Paneer,Raj,8,-331,True,False,False
+Lassi,Mother Dairy,8,-328,True,False,False
+Buttermilk,Mother Dairy,8,-327,True,False,False
+Ghee,Sudha,18,-323,True,False,False
+Ice Cream,Palle2patnam,5,-321,True,False,False
+Curd,Sudha,2,-311,True,False,False
+Paneer,Raj,18,-301,True,False,False
+Ghee,Raj,2,-300,True,False,False
+Cheese,Britannia Industries,14,-297,True,False,False
+Butter,Mother Dairy,1,-284,True,False,False
+Butter,Mother Dairy,8,-282,True,False,False
+Buttermilk,Mother Dairy,0,-276,True,False,False
+Ghee,Amul,7,-265,True,False,False
+Yogurt,Palle2patnam,9,-265,True,False,False
+Milk,Sudha,4,-262,True,False,False
+Cheese,Britannia Industries,10,-260,True,False,False
+Lassi,Mother Dairy,7,-258,True,False,False
+Ice Cream,Palle2patnam,6,-256,True,False,False
+Ghee,Sudha,10,-251,True,False,False
+Yogurt,Amul,2,-250,True,False,False
+Paneer,Mother Dairy,11,-245,True,False,False
+Cheese,Passion Cheese,10,-244,True,False,False
+Ghee,Amul,11,-243,True,False,False
+Lassi,Raj,14,-242,True,False,False
+Curd,Amul,18,-219,True,False,False
+Lassi,Raj,8,-219,True,False,False
+Lassi,Amul,12,-216,True,False,False
+Curd,Raj,1,-213,True,False,False
+Buttermilk,Sudha,0,-212,True,False,False
+Milk,Amul,2,-211,True,False,False
+Milk,Sudha,2,-211,True,False,False
+Buttermilk,Raj,2,-209,True,False,False
+Cheese,Amul,5,-196,True,False,False
+Milk,Sudha,11,-188,True,False,False
+Buttermilk,Mother Dairy,7,-187,True,False,False
+Milk,Mother Dairy,11,-185,True,False,False
+Yogurt,Dodla Dairy,18,-183,True,False,False
+Ice Cream,Mother Dairy,10,-177,True,False,False
+Yogurt,Palle2patnam,0,-174,True,False,False
+Ghee,Raj,5,-173,True,False,False
+Ice Cream,Dodla Dairy,6,-156,True,False,False
+Curd,Mother Dairy,8,-151,True,False,False
+Paneer,Raj,18,-148,True,False,False
+Buttermilk,Sudha,8,-140,True,False,False
+Butter,Warana,17,-138,True,False,False
+Cheese,Amul,15,-128,True,False,False
+Cheese,Amul,5,-119,True,False,False
+Ghee,Amul,422,7,False,True,False
