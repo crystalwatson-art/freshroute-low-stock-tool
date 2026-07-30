@@ -1,6 +1,9 @@
 const DATA_FILE = "dairy_goods_sales_cleaned.csv";
 
 let inventoryData = [];
+const PAGE_SIZE = 200;
+let currentPage = 1;
+let filteredInventoryData = [];
 
 const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
@@ -174,7 +177,7 @@ function applyFilters() {
   const selectedStatus = statusFilter.value;
   const searchText = productSearch.value.trim().toLowerCase();
 
-  const filteredItems = inventoryData
+  filteredInventoryData = inventoryData
     .filter((item) => {
       const matchesStatus =
         selectedStatus === "all" || item.status === selectedStatus;
@@ -188,7 +191,8 @@ function applyFilters() {
     })
     .sort(sortByPriority);
 
-  renderInventoryTable(filteredItems);
+  currentPage = 1;
+  renderInventoryTable(filteredInventoryData);
 }
 
 function sortByPriority(firstItem, secondItem) {
@@ -214,15 +218,20 @@ function sortByPriority(firstItem, secondItem) {
 
 function renderInventoryTable(items) {
   const resultsSummary = document.getElementById("results-summary");
-  const visibleItems = items.slice(0, 200);
 
-  tableBody.innerHTML = "";
+const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+currentPage = Math.min(currentPage, totalPages);
 
-  resultsSummary.textContent =
-    items.length > 200
-      ? `Showing 200 of ${items.length} matching products.`
-      : `Showing ${items.length} matching products.`;
+const startIndex = (currentPage - 1) * PAGE_SIZE;
+const endIndex = Math.min(startIndex + PAGE_SIZE, items.length);
+const visibleItems = items.slice(startIndex, endIndex);
 
+tableBody.innerHTML = "";
+
+resultsSummary.textContent =
+  items.length === 0
+    ? "Showing 0 matching products."
+    : `Showing ${startIndex + 1}–${endIndex} of ${items.length} matching products.`;
   if (items.length === 0) {
     tableBody.innerHTML = `
       <tr>
