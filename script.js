@@ -1,3 +1,6 @@
+const previousPageButton = document.getElementById("previous-page");
+const nextPageButton = document.getElementById("next-page");
+const pageStatus = document.getElementById("page-status");
 const DATA_FILE = "dairy_goods_sales_cleaned.csv";
 
 let inventoryData = [];
@@ -14,7 +17,24 @@ document.addEventListener("DOMContentLoaded", () => {
   statusFilter.addEventListener("change", applyFilters);
   productSearch.addEventListener("input", applyFilters);
   refreshButton.addEventListener("click", loadInventoryData);
+  previousPageButton.addEventListener("click", () => {
+  if (currentPage > 1) {
+    currentPage -= 1;
+    renderInventoryTable(filteredInventoryData);
+   }
+});
 
+nextPageButton.addEventListener("click", () => {
+  const totalPages = Math.ceil(
+    filteredInventoryData.length / PAGE_SIZE
+  );
+
+  if (currentPage < totalPages) {
+    currentPage += 1;
+    renderInventoryTable(filteredInventoryData);
+  }
+});
+  
   loadInventoryData();
 });
 
@@ -221,6 +241,10 @@ function renderInventoryTable(items) {
 
 const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
 currentPage = Math.min(currentPage, totalPages);
+pageStatus.textContent = `Page ${currentPage} of ${totalPages}`;
+previousPageButton.disabled = currentPage === 1;
+nextPageButton.disabled =
+  currentPage === totalPages || items.length === 0; 
 
 const startIndex = (currentPage - 1) * PAGE_SIZE;
 const endIndex = Math.min(startIndex + PAGE_SIZE, items.length);
