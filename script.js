@@ -1,40 +1,41 @@
-const previousPageButton = document.getElementById("previous-page");
-const nextPageButton = document.getElementById("next-page");
-const pageStatus = document.getElementById("page-status");
+"use strict";
+
 const DATA_FILE = "dairy_goods_sales_cleaned.csv";
+const PAGE_SIZE = 10;
+const EXPIRY_WARNING_DAYS = 14;
+const CRITICAL_EXPIRY_DAYS = 3;
+const REQUESTS_STORAGE_KEY = "freshroute-restock-requests";
+const REMOVALS_STORAGE_KEY = "freshroute-removal-flags";
+const THEME_STORAGE_KEY = "freshroute-theme";
 
 let inventoryData = [];
-const PAGE_SIZE = 200;
-let currentPage = 1;
 let filteredInventoryData = [];
+let currentPage = 1;
+let rawRecordCount = 0;
+let sentRequests = loadSentRequests();
+let removalFlags = loadRemovalFlags();
 
 const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
 const refreshButton = document.getElementById("refresh-data");
+const themeToggle = document.getElementById("theme-toggle");
 const tableBody = document.getElementById("inventory-table-body");
+const paginationContainers = [
+  document.getElementById("pagination-top"),
+  document.getElementById("pagination-bottom")
+];
 
 document.addEventListener("DOMContentLoaded", () => {
+  applySavedTheme();
   statusFilter.addEventListener("change", applyFilters);
   productSearch.addEventListener("input", applyFilters);
   refreshButton.addEventListener("click", loadInventoryData);
-  previousPageButton.addEventListener("click", () => {
-  if (currentPage > 1) {
-    currentPage -= 1;
-    renderInventoryTable(filteredInventoryData);
-   }
-});
-
-nextPageButton.addEventListener("click", () => {
-  const totalPages = Math.ceil(
-    filteredInventoryData.length / PAGE_SIZE
-  );
-
-  if (currentPage < totalPages) {
-    currentPage += 1;
-    renderInventoryTable(filteredInventoryData);
-  }
-});
-  
+  themeToggle.addEventListener("click", toggleTheme);
+  tableBody.addEventListener("click", handleTableAction);
+  paginationContainers.forEach((container) => {
+    container.addEventListener("click", handlePaginationClick);
+    container.addEventListener("submit", handlePageJump);
+  });
   loadInventoryData();
 });
 
@@ -44,6 +45,7 @@ async function loadInventoryData() {
 
   loadingMessage.hidden = false;
   errorMessage.hidden = true;
+  refreshButton.disabled = true;
   tableBody.innerHTML = "";
 
   try {
@@ -55,23 +57,39 @@ async function loadInventoryData() {
       throw new Error(`Unable to load data. Status: ${response.status}`);
     }
 
-    const csvText = await response.text();
-    const rows = parseCSV(csvText);
+    const rows = parseCSV(await response.text());
+    rawRecordCount = rows.length;
+    inventoryData = aggregateLatestInventory(rows);
+    sentRequests = new Set(
+      [...sentRequests].filter((requestKey) =>
+        inventoryData.some((item) =>
+          item.requestKey === requestKey &&
+          ["low-stock", "reorder-soon"].includes(item.status)
+        )
+      )
+    );
+    removalFlags = new Set(
+      [...removalFlags].filter((requestKey) =>
+        inventoryData.some((item) =>
+          item.requestKey === requestKey && item.status === "expired"
+        )
+      )
+    );
+    saveSentRequests();
+    saveRemovalFlags();
 
-    inventoryData = rows
-      .map(cleanInventoryRow)
-      .filter((item) => item.productName);
-
-    updateSummaryCards(inventoryData);
+    updateDashboardSummary();
+    renderCriticalAlert();
     applyFilters();
-
     loadingMessage.hidden = true;
   } catch (error) {
     loadingMessage.hidden = true;
     errorMessage.hidden = false;
     errorMessage.textContent =
-      "FreshRoute could not load the inventory file. Please refresh the page.";
+      "FreshRoute could not load the inventory file. Run the dashboard from a local web server, then try again.";
     console.error(error);
+  } finally {
+    refreshButton.disabled = false;
   }
 }
 
@@ -89,13 +107,9 @@ function parseCSV(csvText) {
 
   return lines.slice(1).map((line) => {
     const values = parseCSVLine(line);
-    const row = {};
-
-    headers.forEach((header, index) => {
-      row[header] = values[index] ? values[index].trim() : "";
-    });
-
-    return row;
+    return Object.fromEntries(
+      headers.map((header, index) => [header, (values[index] || "").trim()])
+    );
   });
 }
 
@@ -125,72 +139,178 @@ function parseCSVLine(line) {
   return values;
 }
 
-function cleanInventoryRow(row) {
+function aggregateLatestInventory(rows) {
+  const latestBySku = new Map();
+
+  rows.forEach((row, sourceIndex) => {
+    const productId = cleanText(row.product_id, "Unknown ID");
+    const brand = cleanText(row.brand, "Unknown brand");
+    const requestKey = JSON.stringify([productId, brand]);
+    const snapshotTime = parseDate(row.date)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const existing = latestBySku.get(requestKey);
+
+    if (
+      !existing ||
+      snapshotTime > existing.snapshotTime ||
+      (snapshotTime === existing.snapshotTime && sourceIndex > existing.sourceIndex)
+    ) {
+      latestBySku.set(requestKey, {
+        row,
+        requestKey,
+        snapshotTime,
+        sourceIndex
+      });
+    }
+  });
+
+  return [...latestBySku.values()]
+    .map(({ row, requestKey }) => cleanInventoryRow(row, requestKey))
+    .sort(sortByPriority);
+}
+
+function cleanInventoryRow(row, requestKey) {
   const currentStock = toNumber(row.quantity_in_stock_literskg);
-  const minimumLevel = toNumber(row.minimum_stock_threshold_literskg);
+  const rawMinimumLevel = toNumber(row.minimum_stock_threshold_literskg);
+  const restockAt = rawMinimumLevel === null ? null : Math.ceil(rawMinimumLevel);
   const reorderQuantity = toNumber(row.reorder_quantity_literskg);
+  const daysToExpiry = calculateDaysToExpiry(row.date, row.expiration_date);
+  const stockStatus = classifyStock(currentStock, restockAt);
 
   return {
+    requestKey,
+    productId: cleanText(row.product_id, "Unknown ID"),
     productName: cleanText(row.product_name, "Unknown product"),
     brand: cleanText(row.brand, "Unknown brand"),
+    snapshotDate: cleanText(row.date, "Unknown date"),
     currentStock,
-    minimumLevel,
+    restockAt,
     reorderQuantity,
-    daysToExpiry: calculateDaysToExpiry(row.date, row.expiration_date),
-    status: classifyInventory(
-      currentStock,
-      minimumLevel,
-      reorderQuantity
-    )
+    daysToExpiry,
+    stockStatus,
+    status: getDisplayStatus(stockStatus, daysToExpiry)
   };
 }
 
-function classifyInventory(currentStock, minimumLevel, reorderQuantity) {
-  if (currentStock === null || minimumLevel === null) {
+function classifyStock(currentStock, restockAt) {
+  if (currentStock === null || restockAt === null) {
     return "needs-review";
   }
 
-  if (currentStock <= minimumLevel) {
+  if (currentStock <= restockAt) {
     return "low-stock";
   }
 
-  const reorderBuffer =
-    reorderQuantity === null ? minimumLevel * 0.25 : reorderQuantity;
-
-  if (currentStock <= minimumLevel + reorderBuffer) {
+  if (currentStock <= restockAt * 1.2) {
     return "reorder-soon";
   }
 
-  return "stock-level-good";
+  return "adequate-stock";
+}
+
+function getDisplayStatus(stockStatus, daysToExpiry) {
+  if (isExpired(daysToExpiry)) {
+    return "expired";
+  }
+
+  if (daysToExpiry === 0) {
+    return "expires-today";
+  }
+
+  if (isExpiringSoon(daysToExpiry)) {
+    return "expiring-soon";
+  }
+
+  if (stockStatus === "low-stock" || stockStatus === "reorder-soon") {
+    return stockStatus;
+  }
+
+  return stockStatus === "needs-review" ? "needs-review" : "healthy-stock";
+}
+
+function isExpired(daysToExpiry) {
+  return daysToExpiry !== null && daysToExpiry < 0;
+}
+
+function isExpiringSoon(daysToExpiry) {
+  return daysToExpiry !== null &&
+    daysToExpiry >= 1 &&
+    daysToExpiry <= EXPIRY_WARNING_DAYS;
 }
 
 function calculateDaysToExpiry(snapshotDate, expirationDate) {
-  if (!snapshotDate || !expirationDate) {
+  const start = parseDate(snapshotDate);
+  const end = parseDate(expirationDate);
+
+  if (!start || !end) {
     return null;
   }
 
-  const start = new Date(`${snapshotDate}T00:00:00Z`);
-  const end = new Date(`${expirationDate}T00:00:00Z`);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return null;
-  }
-
-  const millisecondsPerDay = 1000 * 60 * 60 * 24;
-  return Math.round((end - start) / millisecondsPerDay);
+  return Math.round((end - start) / 86400000);
 }
 
-function updateSummaryCards(items) {
-  document.getElementById("total-products").textContent = items.length;
+function parseDate(value) {
+  if (!value) {
+    return null;
+  }
 
-  document.getElementById("low-stock-count").textContent =
-    items.filter((item) => item.status === "low-stock").length;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
-  document.getElementById("reorder-soon-count").textContent =
-    items.filter((item) => item.status === "reorder-soon").length;
+function updateDashboardSummary() {
+  const needsRestock = inventoryData.filter((item) =>
+    ["low-stock", "reorder-soon"].includes(item.status)
+  ).length;
+  const expiringSoon = inventoryData.filter((item) =>
+    item.daysToExpiry === 0 || isExpiringSoon(item.daysToExpiry)
+  ).length;
+  const expired = inventoryData.filter((item) => item.status === "expired").length;
+  const healthyStock = inventoryData.filter(
+    (item) => item.status === "healthy-stock"
+  ).length;
 
-  document.getElementById("good-stock-count").textContent =
-    items.filter((item) => item.status === "stock-level-good").length;
+  document.getElementById("unique-sku-count").textContent = inventoryData.length;
+  document.getElementById("needs-restock-count").textContent = needsRestock;
+  document.getElementById("expiring-soon-count").textContent = expiringSoon;
+  document.getElementById("expired-count").textContent = expired;
+  document.getElementById("healthy-stock-count").textContent = healthyStock;
+  document.getElementById("requests-sent-count").textContent = sentRequests.size;
+  document.getElementById("source-data-note").textContent =
+    `${rawRecordCount.toLocaleString()} raw source records · ${inventoryData.length} latest unique SKUs`;
+}
+
+function renderCriticalAlert() {
+  const alert = document.getElementById("critical-alert");
+  const summary = document.getElementById("critical-alert-summary");
+  const productList = document.getElementById("critical-products");
+  const criticalItems = inventoryData
+    .filter((item) =>
+      item.daysToExpiry !== null && item.daysToExpiry <= CRITICAL_EXPIRY_DAYS
+    )
+    .sort((firstItem, secondItem) =>
+      firstItem.daysToExpiry - secondItem.daysToExpiry
+    );
+
+  alert.hidden = criticalItems.length === 0;
+  productList.innerHTML = "";
+
+  if (criticalItems.length === 0) {
+    return;
+  }
+
+  summary.textContent = `${criticalItems.length} SKUs are expired or due within 72 hours of their latest inventory date.`;
+  criticalItems.slice(0, 3).forEach((item) => {
+    const listItem = document.createElement("li");
+    listItem.innerHTML = `<strong>${escapeHTML(item.productName)}</strong><span>${escapeHTML(item.brand)} · ${formatExpiry(item.daysToExpiry)}</span>`;
+    productList.appendChild(listItem);
+  });
+
+  if (criticalItems.length > 3) {
+    const moreItem = document.createElement("li");
+    moreItem.className = "more-critical";
+    moreItem.textContent = `+ ${criticalItems.length - 3} more`;
+    productList.appendChild(moreItem);
+  }
 }
 
 function applyFilters() {
@@ -199,89 +319,215 @@ function applyFilters() {
 
   filteredInventoryData = inventoryData
     .filter((item) => {
-      const matchesStatus =
-        selectedStatus === "all" || item.status === selectedStatus;
-
+      const matchesStatus = matchesStatusFilter(item, selectedStatus);
       const searchableText =
-        `${item.productName} ${item.brand}`.toLowerCase();
-
-      const matchesSearch = searchableText.includes(searchText);
-
-      return matchesStatus && matchesSearch;
+        `${item.productName} ${item.brand} ${item.productId}`.toLowerCase();
+      return matchesStatus && searchableText.includes(searchText);
     })
     .sort(sortByPriority);
 
   currentPage = 1;
-  renderInventoryTable(filteredInventoryData);
+  renderInventoryTable();
+}
+
+function matchesStatusFilter(item, selectedStatus) {
+  if (selectedStatus === "all") return true;
+  if (selectedStatus === "expired") return isExpired(item.daysToExpiry);
+  if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry);
+  return item.status === selectedStatus;
 }
 
 function sortByPriority(firstItem, secondItem) {
   const priorityOrder = {
-    "low-stock": 1,
-    "reorder-soon": 2,
-    "needs-review": 3,
-    "stock-level-good": 4
+    "expired": 1,
+    "expires-today": 2,
+    "low-stock": 3,
+    "reorder-soon": 4,
+    "expiring-soon": 5,
+    "healthy-stock": 6,
+    "needs-review": 7
   };
+  const priorityDifference =
+    (priorityOrder[firstItem.status] || 7) -
+    (priorityOrder[secondItem.status] || 7);
 
-  const statusDifference =
-    priorityOrder[firstItem.status] - priorityOrder[secondItem.status];
-
-  if (statusDifference !== 0) {
-    return statusDifference;
+  if (priorityDifference !== 0) {
+    return priorityDifference;
   }
 
-  const firstExpiry = firstItem.daysToExpiry ?? Number.MAX_SAFE_INTEGER;
-  const secondExpiry = secondItem.daysToExpiry ?? Number.MAX_SAFE_INTEGER;
+  const expiryDifference =
+    (firstItem.daysToExpiry ?? Number.MAX_SAFE_INTEGER) -
+    (secondItem.daysToExpiry ?? Number.MAX_SAFE_INTEGER);
 
-  return firstExpiry - secondExpiry;
+  if (expiryDifference !== 0) {
+    return expiryDifference;
+  }
+
+  return firstItem.productName.localeCompare(secondItem.productName);
 }
 
-function renderInventoryTable(items) {
+function renderInventoryTable() {
+  const itemCount = filteredInventoryData.length;
+  const totalPages = Math.max(1, Math.ceil(itemCount / PAGE_SIZE));
+  currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, itemCount);
+  const visibleItems = filteredInventoryData.slice(startIndex, endIndex);
   const resultsSummary = document.getElementById("results-summary");
 
-const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-currentPage = Math.min(currentPage, totalPages);
-pageStatus.textContent = `Page ${currentPage} of ${totalPages}`;
-previousPageButton.disabled = currentPage === 1;
-nextPageButton.disabled =
-  currentPage === totalPages || items.length === 0; 
+  resultsSummary.textContent = itemCount === 0
+    ? "No SKUs match the current search and filter."
+    : `Showing ${startIndex + 1}–${endIndex} of ${itemCount} matching SKUs`;
+  tableBody.innerHTML = "";
 
-const startIndex = (currentPage - 1) * PAGE_SIZE;
-const endIndex = Math.min(startIndex + PAGE_SIZE, items.length);
-const visibleItems = items.slice(startIndex, endIndex);
-
-tableBody.innerHTML = "";
-
-resultsSummary.textContent =
-  items.length === 0
-    ? "Showing 0 matching products."
-    : `Showing ${startIndex + 1}–${endIndex} of ${items.length} matching products.`;
-  if (items.length === 0) {
+  if (itemCount === 0) {
     tableBody.innerHTML = `
-      <tr>
-        <td colspan="6">No products match this search.</td>
+      <tr class="empty-row">
+        <td colspan="7">No SKUs match this search. Try another term or status.</td>
       </tr>
     `;
+  } else {
+    visibleItems.forEach((item) => tableBody.appendChild(createInventoryRow(item)));
+  }
+
+  renderPagination(totalPages, itemCount);
+}
+
+function createInventoryRow(item) {
+  const row = document.createElement("tr");
+  const isExpiredItem = item.status === "expired";
+  const canRequestRestock = ["low-stock", "reorder-soon"].includes(item.status);
+  const requestSent = sentRequests.has(item.requestKey);
+  const removalFlagged = removalFlags.has(item.requestKey);
+  const actionMarkup = isExpiredItem
+    ? `<button class="removal-button${removalFlagged ? " is-flagged" : ""}" type="button" data-removal-key="${escapeHTML(item.requestKey)}" ${removalFlagged ? "disabled" : ""}>${removalFlagged ? "Removal Flagged ✓" : "Flag for Removal"}</button>`
+    : canRequestRestock
+    ? `<button class="request-button${requestSent ? " is-sent" : ""}" type="button" data-request-key="${escapeHTML(item.requestKey)}" ${requestSent ? "disabled" : ""}>${requestSent ? "Request Sent ✓" : "Send Restock Request"}</button>`
+    : '<span class="no-action">No action needed</span>';
+
+  row.innerHTML = `
+    <td><span class="status-badge ${item.status}"><span aria-hidden="true"></span>${getStatusLabel(item.status)}</span></td>
+    <td><strong class="product-name">${escapeHTML(item.productName)}</strong><small>Product ID ${escapeHTML(item.productId)} · ${escapeHTML(item.snapshotDate)}</small></td>
+    <td>${escapeHTML(item.brand)}</td>
+    <td>${formatWholeNumber(item.currentStock)}</td>
+    <td>${formatWholeNumber(item.restockAt)}</td>
+    <td class="expiry-value ${getExpiryClass(item.daysToExpiry)}">${formatExpiry(item.daysToExpiry)}</td>
+    <td>${actionMarkup}</td>
+  `;
+  return row;
+}
+
+function handleTableAction(event) {
+  const removalButton = event.target.closest("[data-removal-key]");
+
+  if (removalButton && !removalButton.disabled) {
+    const matchingItem = inventoryData.find(
+      (item) => item.requestKey === removalButton.dataset.removalKey
+    );
+
+    if (matchingItem?.status === "expired") {
+      removalFlags.add(matchingItem.requestKey);
+      saveRemovalFlags();
+      renderInventoryTable();
+    }
     return;
   }
 
-  visibleItems.forEach((item) => {
-    const row = document.createElement("tr");
+  const button = event.target.closest("[data-request-key]");
 
-    row.innerHTML = `
-      <td>
-        <span class="status-badge ${item.status}">
-          ${getStatusLabel(item.status)}
+  if (!button || button.disabled) {
+    return;
+  }
+
+  const matchingItem = inventoryData.find(
+    (item) => item.requestKey === button.dataset.requestKey
+  );
+
+  if (!matchingItem || !["low-stock", "reorder-soon"].includes(matchingItem.status)) {
+    return;
+  }
+
+  sentRequests.add(matchingItem.requestKey);
+  saveSentRequests();
+  updateDashboardSummary();
+  renderInventoryTable();
+}
+
+function renderPagination(totalPages, itemCount) {
+  const pageNumbers = getVisiblePageNumbers(totalPages, currentPage);
+
+  paginationContainers.forEach((container) => {
+    const label = container.id === "pagination-top" ? "above table" : "below table";
+    container.innerHTML = `
+      <div class="page-buttons">
+        ${paginationButton("First", 1, currentPage === 1)}
+        ${paginationButton("Previous", currentPage - 1, currentPage === 1)}
+        <span class="numbered-pages" aria-label="Page choices">
+          ${pageNumbers.map((page) =>
+            paginationButton(String(page), page, false, page === currentPage)
+          ).join("")}
         </span>
-      </td>
-      <td>${escapeHTML(item.productName)}</td>
-      <td>${escapeHTML(item.brand)}</td>
-      <td>${formatNumber(item.currentStock)}</td>
-      <td>${formatNumber(item.minimumLevel)}</td>
-      <td>${formatExpiry(item.daysToExpiry)}</td>
+        ${paginationButton("Next", currentPage + 1, currentPage === totalPages || itemCount === 0)}
+        ${paginationButton("Last", totalPages, currentPage === totalPages || itemCount === 0)}
+      </div>
+      <div class="page-meta">
+        <span class="page-indicator">Page ${currentPage} of ${totalPages}</span>
+        <form class="jump-form">
+          <label for="jump-${label.replace(" ", "-")}">Jump to page</label>
+          <input id="jump-${label.replace(" ", "-")}" name="page" type="number" min="1" max="${totalPages}" value="${currentPage}" inputmode="numeric" ${itemCount === 0 ? "disabled" : ""}>
+          <button type="submit" ${itemCount === 0 ? "disabled" : ""}>Go</button>
+        </form>
+      </div>
     `;
+  });
+}
 
-    tableBody.appendChild(row);
+function paginationButton(label, page, disabled, isCurrent = false) {
+  return `<button type="button" data-page="${page}" ${disabled ? "disabled" : ""} ${isCurrent ? 'aria-current="page"' : ""} aria-label="${/^\d+$/.test(label) ? `Page ${label}` : label}">${label}</button>`;
+}
+
+function getVisiblePageNumbers(totalPages, activePage) {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const start = Math.min(Math.max(activePage - 2, 1), totalPages - 4);
+  return Array.from({ length: 5 }, (_, index) => start + index);
+}
+
+function handlePaginationClick(event) {
+  const button = event.target.closest("[data-page]");
+
+  if (!button || button.disabled) {
+    return;
+  }
+
+  goToPage(Number(button.dataset.page));
+}
+
+function handlePageJump(event) {
+  if (!event.target.matches(".jump-form")) {
+    return;
+  }
+
+  event.preventDefault();
+  const input = event.target.elements.page;
+  goToPage(Number(input.value));
+}
+
+function goToPage(page) {
+  const totalPages = Math.max(1, Math.ceil(filteredInventoryData.length / PAGE_SIZE));
+
+  if (!Number.isInteger(page) || page < 1 || page > totalPages) {
+    return;
+  }
+
+  currentPage = page;
+  renderInventoryTable();
+  document.getElementById("inventory-title").scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start"
   });
 }
 
@@ -289,44 +535,38 @@ function getStatusLabel(status) {
   const labels = {
     "low-stock": "Low Stock",
     "reorder-soon": "Reorder Soon",
-    "stock-level-good": "Stock Level Good",
+    "expired": "Expired",
+    "expires-today": "Expires Today",
+    "expiring-soon": "Expiring Soon",
+    "healthy-stock": "Healthy Stock",
     "needs-review": "Needs Review"
   };
-
   return labels[status] || "Needs Review";
 }
 
-function formatExpiry(days) {
-  if (days === null) {
-    return "No date";
-  }
-
-  if (days < 0) {
-    return `Expired ${Math.abs(days)} days ago`;
-  }
-
-  if (days === 0) {
-    return "Expires today";
-  }
-
-  return `${days} days`;
+function getExpiryClass(days) {
+  if (days === null) return "";
+  if (days <= 0) return "critical-expiry";
+  if (days <= CRITICAL_EXPIRY_DAYS) return "critical-expiry";
+  if (isExpiringSoon(days)) return "warning-expiry";
+  return "";
 }
 
-function formatNumber(value) {
-  if (value === null) {
-    return "Missing";
-  }
+function formatExpiry(days) {
+  if (days === null) return "No date";
+  if (days < 0) return `Expired ${Math.abs(days)} ${Math.abs(days) === 1 ? "day" : "days"} ago`;
+  if (days === 0) return "Expires today";
+  if (days === 1) return "Expires in 1 day";
+  return `Expires in ${days} days`;
+}
 
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: 2
-  });
+function formatWholeNumber(value) {
+  if (value === null) return "Missing";
+  return Math.round(value).toLocaleString();
 }
 
 function toNumber(value) {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
-
+  if (value === undefined || value === null || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -334,6 +574,74 @@ function toNumber(value) {
 function cleanText(value, fallback) {
   const cleanedValue = String(value || "").trim();
   return cleanedValue || fallback;
+}
+
+function loadSentRequests() {
+  try {
+    const savedRequests = JSON.parse(localStorage.getItem(REQUESTS_STORAGE_KEY) || "[]");
+    return new Set(Array.isArray(savedRequests) ? savedRequests : []);
+  } catch (error) {
+    console.warn("Saved restock requests could not be read.", error);
+    return new Set();
+  }
+}
+
+function saveSentRequests() {
+  try {
+    localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify([...sentRequests]));
+  } catch (error) {
+    console.warn("Restock request state could not be saved.", error);
+  }
+}
+
+function loadRemovalFlags() {
+  try {
+    const savedFlags = JSON.parse(localStorage.getItem(REMOVALS_STORAGE_KEY) || "[]");
+    return new Set(Array.isArray(savedFlags) ? savedFlags : []);
+  } catch (error) {
+    console.warn("Saved removal flags could not be read.", error);
+    return new Set();
+  }
+}
+
+function saveRemovalFlags() {
+  try {
+    localStorage.setItem(REMOVALS_STORAGE_KEY, JSON.stringify([...removalFlags]));
+  } catch (error) {
+    console.warn("Removal flag state could not be saved.", error);
+  }
+}
+
+function applySavedTheme() {
+  let savedTheme = "dark";
+
+  try {
+    savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+  } catch (error) {
+    console.warn("Theme preference could not be read.", error);
+  }
+
+  setTheme(savedTheme === "light" ? "light" : "dark");
+}
+
+function toggleTheme() {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  setTheme(nextTheme);
+
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  } catch (error) {
+    console.warn("Theme preference could not be saved.", error);
+  }
+}
+
+function setTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.dataset.theme = theme;
+  themeToggle.setAttribute("aria-pressed", String(!isDark));
+  themeToggle.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} mode`);
+  document.getElementById("theme-icon").textContent = isDark ? "☀" : "☾";
+  document.getElementById("theme-label").textContent = isDark ? "Light mode" : "Dark mode";
 }
 
 function escapeHTML(value) {

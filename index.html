@@ -1,113 +1,162 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+  <meta name="color-scheme" content="dark light">
   <title>FreshRoute Inventory Dashboard</title>
-
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <main class="container">
+  <a class="skip-link" href="#inventory-table">Skip to inventory</a>
 
+  <main class="dashboard-shell">
     <header class="page-header">
-      <div>
-        <p class="eyebrow">Inventory Coordinator Dashboard</p>
-        <h1>FreshRoute</h1>
-        <p class="subtitle">
-          See which dairy products need attention without reading every row.
-        </p>
-      </div>
-
-      <button id="refresh-data" type="button">
-        Refresh Data
-      </button>
-    </header>
-
-    <section class="summary-grid" aria-label="Inventory summary">
-      <article class="summary-card">
-        <span>Total Products</span>
-        <strong id="total-products">0</strong>
-      </article>
-
-      <article class="summary-card urgent">
-        <span>Low Stock</span>
-        <strong id="low-stock-count">0</strong>
-      </article>
-
-      <article class="summary-card warning">
-        <span>Reorder Soon</span>
-        <strong id="reorder-soon-count">0</strong>
-      </article>
-
-      <article class="summary-card safe">
-        <span>Stock Level Good</span>
-        <strong id="good-stock-count">0</strong>
-      </article>
-    </section>
-
-    <section class="controls" aria-label="Dashboard controls">
-      <div>
-        <label for="status-filter">Filter by status</label>
-
-        <select id="status-filter">
-          <option value="all">All Products</option>
-          <option value="low-stock">Low Stock</option>
-          <option value="reorder-soon">Reorder Soon</option>
-          <option value="stock-level-good">Stock Level Good</option>
-        </select>
-      </div>
-
-      <div>
-        <label for="product-search">Search products</label>
-
-        <input
-          id="product-search"
-          type="search"
-          placeholder="Search by product or brand"
-        >
-      </div>
-    </section>
-
-    <section class="dashboard-section">
-      <div class="section-heading">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">FR</span>
         <div>
-          <h2>Priority Inventory</h2>
-          <p id="results-summary">Loading inventory data...</p>
+          <p class="eyebrow">ShelfSense inventory intelligence</p>
+          <h1>FreshRoute</h1>
+          <p class="subtitle">Latest inventory signals for every unique dairy SKU.</p>
         </div>
       </div>
 
-      <div id="loading-message" class="message">
-        Loading FreshRoute data...
+      <div class="header-actions">
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to light mode" aria-pressed="false">
+          <span id="theme-icon" aria-hidden="true">☀</span>
+          <span id="theme-label">Light mode</span>
+        </button>
+        <button id="refresh-data" class="primary-button" type="button">
+          <span aria-hidden="true">↻</span>
+          Refresh data
+        </button>
       </div>
+    </header>
 
-      <div id="error-message" class="message error-message" hidden></div>
+    <section class="summary-grid" aria-label="Inventory summary">
+      <article class="summary-card metric-skus">
+        <span class="metric-icon" aria-hidden="true">▦</span>
+        <div>
+          <p>Unique SKUs</p>
+          <strong id="unique-sku-count">—</strong>
+          <small>Latest snapshot per ID + brand</small>
+        </div>
+      </article>
 
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Product</th>
-              <th>Brand</th>
-              <th>Current Stock</th>
-              <th>Minimum Level</th>
-              <th>Days to Expiry</th>
-            </tr>
-          </thead>
+      <article class="summary-card metric-restock">
+        <span class="metric-icon" aria-hidden="true">!</span>
+        <div>
+          <p>Needs Restock</p>
+          <strong id="needs-restock-count">—</strong>
+          <small>Low stock + reorder soon</small>
+        </div>
+      </article>
 
-          <tbody id="inventory-table-body"></tbody>
-        </table>
-      </div> 
-      <div class="pagination-controls" aria-label="Table pagination">
-  <button id="previous-page" type="button">Previous</button>
-  <span id="page-status">Page 1 of 1</span>
-  <button id="next-page" type="button">Next</button>
-</div>
+      <article class="summary-card metric-expiry">
+        <span class="metric-icon" aria-hidden="true">◷</span>
+        <div>
+          <p>Expiring Soon</p>
+          <strong id="expiring-soon-count">—</strong>
+          <small>Expires today or within 14 days</small>
+        </div>
+      </article>
+
+      <article class="summary-card metric-expired">
+        <span class="metric-icon" aria-hidden="true">×</span>
+        <div>
+          <p>Expired</p>
+          <strong id="expired-count">—</strong>
+          <small>Flag these SKUs for removal</small>
+        </div>
+      </article>
+
+      <article class="summary-card metric-healthy">
+        <span class="metric-icon" aria-hidden="true">✓</span>
+        <div>
+          <p>Healthy Stock</p>
+          <strong id="healthy-stock-count">—</strong>
+          <small>Stocked with no expiry warning</small>
+        </div>
+      </article>
+
+      <article class="summary-card metric-requests">
+        <span class="metric-icon" aria-hidden="true">↗</span>
+        <div>
+          <p>Requests Sent</p>
+          <strong id="requests-sent-count">0</strong>
+          <small>Saved on this device</small>
+        </div>
+      </article>
     </section>
 
+    <section id="critical-alert" class="critical-alert" aria-labelledby="critical-alert-title" hidden>
+      <span class="alert-icon" aria-hidden="true">!</span>
+      <div class="alert-copy">
+        <p class="alert-kicker">Critical expiry alert</p>
+        <h2 id="critical-alert-title">Immediate attention required</h2>
+        <p id="critical-alert-summary"></p>
+        <ul id="critical-products" class="critical-products"></ul>
+      </div>
+    </section>
+
+    <section class="inventory-panel" aria-labelledby="inventory-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Live priority queue</p>
+          <h2 id="inventory-title">Inventory overview</h2>
+          <p id="results-summary" aria-live="polite">Loading inventory data…</p>
+        </div>
+        <p id="source-data-note" class="source-note">Reading source records…</p>
+      </div>
+
+      <form class="controls" role="search" onsubmit="return false">
+        <div class="control-group search-group">
+          <label for="product-search">Search inventory</label>
+          <div class="input-shell">
+            <span aria-hidden="true">⌕</span>
+            <input id="product-search" type="search" placeholder="Product, brand, or product ID" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label for="status-filter">Status</label>
+          <select id="status-filter">
+            <option value="all">All statuses</option>
+            <option value="low-stock">Low Stock</option>
+            <option value="reorder-soon">Reorder Soon</option>
+            <option value="expired">Expired</option>
+            <option value="expiring-soon">Expiring Soon</option>
+            <option value="healthy-stock">Healthy Stock</option>
+          </select>
+        </div>
+      </form>
+
+      <div id="loading-message" class="message" role="status">Loading FreshRoute data…</div>
+      <div id="error-message" class="message error-message" role="alert" hidden></div>
+
+      <nav id="pagination-top" class="pagination" aria-label="Inventory pagination above table"></nav>
+
+      <div class="table-wrapper">
+        <table id="inventory-table">
+          <caption class="visually-hidden">FreshRoute inventory, aggregated by product ID and brand</caption>
+          <thead>
+            <tr>
+              <th scope="col">Status</th>
+              <th scope="col">Product</th>
+              <th scope="col">Brand</th>
+              <th scope="col">Current stock</th>
+              <th scope="col">Restock At</th>
+              <th scope="col">Expiration</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-table-body"></tbody>
+        </table>
+      </div>
+
+      <nav id="pagination-bottom" class="pagination" aria-label="Inventory pagination below table"></nav>
+    </section>
   </main>
 
   <script src="script.js"></script>
