@@ -20,6 +20,8 @@ const {
   suggestColumnMappings,
   validateMappedRows,
   aggregateLatestInventory,
+  classifyStock,
+  getDisplayStatus,
   isExpired,
   isExpiringSoon,
   sortByPriority,
@@ -33,18 +35,21 @@ const {
 } = FreshRouteReceiving;
 
 let inventoryData = [];
+let baseInventoryData = [];
 let filteredInventoryData = [];
 let currentPage = 1;
 let rawRecordCount = 0;
 let dataMode = "demo";
 let customerRows = [];
 let customerFileName = "";
+let customerSourceKey = "";
 let pendingUpload = null;
 let sentRequests = loadSentRequests();
 let removalFlags = loadRemovalFlags();
 let receivingItems = [];
 let damagePhoto = null;
 let receivingRecords = loadReceivingRecords();
+let reconciliationController = null;
 
 const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
@@ -101,6 +106,13 @@ document.addEventListener("DOMContentLoaded", () => {
   paginationContainers.forEach((container) => {
     container.addEventListener("click", handlePaginationClick);
     container.addEventListener("submit", handlePageJump);
+  });
+  reconciliationController = FreshRouteReconciliationUI.createController({
+    getRecords: () => receivingRecords,
+    getInventory: () => inventoryData,
+    getSourceKey: getCurrentSourceKey,
+    getSourceLabel: getCurrentSourceLabel,
+    onInventoryChanged: refreshInventoryAfterReconciliation
   });
   updateBackToTopVisibility();
   receivingForm.elements.deliveryDate.value = getLocalTodayISO();
@@ -181,6 +193,7 @@ function getReceivingItemInput() {
   return {
     sku: receivingForm.elements.sku.value,
     productName: receivingForm.elements.productName.value,
+    brand: receivingForm.elements.brand.value,
     boxesPerRow: receivingForm.elements.boxesPerRow.value,
     layers: receivingForm.elements.layers.value,
     unitsPerBox: receivingForm.elements.unitsPerBox.value,
@@ -247,7 +260,7 @@ function addReceivingItem(event) {
 }
 
 function clearReceivingProductFields() {
-  ["sku", "productName", "boxesPerRow", "layers", "unitsPerBox"].forEach((name) => {
+  ["sku", "productName", "brand", "boxesPerRow", "layers", "unitsPerBox"].forEach((name) => {
     receivingForm.elements[name].value = "";
   });
   receivingForm.elements.damagedBoxes.value = "0";
@@ -296,7 +309,7 @@ function renderReceivingReview() {
 
   receivingTableBody.innerHTML = receivingItems.map((item) => `
     <tr>
-      <td><strong class="product-name">${escapeHTML(item.productName)}</strong><small>SKU ${escapeHTML(item.sku)}</small></td>
+      <td><strong class="product-name">${escapeHTML(item.productName)}</strong><small>SKU ${escapeHTML(item.sku)} · ${escapeHTML(item.brand)}</small></td>
       <td>${item.boxesPerRow.toLocaleString()} × ${item.layers.toLocaleString()} = ${item.totalBoxes.toLocaleString()} boxes</td>
       <td>${item.unitsPerBox.toLocaleString()} × ${item.totalBoxes.toLocaleString()} = ${item.totalUnits.toLocaleString()}</td>
       <td>${item.damagedBoxes.toLocaleString()} boxes + ${item.damagedUnits.toLocaleString()} units<small>${item.totalDamagedUnits.toLocaleString()} total damaged units</small></td>
@@ -370,6 +383,8 @@ function saveReceivingRecord() {
       : `record-${Date.now()}`,
     ...detailsResult.details,
     photoName: damagePhoto?.name || "",
+    sourceKey: getCurrentSourceKey(),
+    sourceLabel: getCurrentSourceLabel(),
     items: receivingItems.map(({ id, ...item }) => item),
     totals,
     savedAt: new Date().toISOString()
@@ -425,8 +440,14 @@ function loadReceivingRecords() {
       Array.isArray(record.items) &&
       record.totals &&
       Number.isFinite(record.totals.lineItems) &&
+      Number.isFinite(record.totals.totalUnits) &&
+      Number.isFinite(record.totals.totalDamagedUnits) &&
       Number.isFinite(record.totals.usableUnits)
-    ).slice(0, MAX_SAVED_RECEIVING_RECORDS);
+    ).map((record) => ({
+      ...record,
+      sourceKey: typeof record.sourceKey === "string" ? record.sourceKey : "demo",
+      sourceLabel: typeof record.sourceLabel === "string" ? record.sourceLabel : "Demo inventory"
+    })).slice(0, MAX_SAVED_RECEIVING_RECORDS);
   } catch (error) {
     console.warn("Saved receiving records could not be read.", error);
     return [];
@@ -434,28 +455,7 @@ function loadReceivingRecords() {
 }
 
 function renderSavedReceivingRecords() {
-  const count = receivingRecords.length;
-  document.getElementById("saved-receiving-count").textContent =
-    `${count.toLocaleString()} saved locally`;
-  const list = document.getElementById("saved-receiving-list");
-
-  if (count === 0) {
-    list.innerHTML = '<li class="saved-receiving-empty">No receiving records saved yet.</li>';
-    return;
-  }
-
-  list.innerHTML = receivingRecords.slice(0, 5).map((record) => `
-    <li>
-      <div>
-        <strong>${escapeHTML(record.supplier)}</strong>
-        <span>${escapeHTML(record.deliveryDate)} · ${record.totals.lineItems.toLocaleString()} line item${record.totals.lineItems === 1 ? "" : "s"}</span>
-      </div>
-      <div>
-        <strong>${record.totals.usableUnits.toLocaleString()} usable units</strong>
-        <span>${record.photoName ? `Photo: ${escapeHTML(record.photoName)}` : "No damage photo"}</span>
-      </div>
-    </li>
-  `).join("");
+  reconciliationController?.render();
 }
 
 function showReceivingFeedback(message, type, details = []) {
@@ -527,6 +527,7 @@ async function loadDemoData({ announce = false } = {}) {
     dataMode = "demo";
     customerRows = [];
     customerFileName = "";
+    customerSourceKey = "";
     sentRequests = loadSentRequests();
     removalFlags = loadRemovalFlags();
     setInventoryData(parsedRecordsToObjects(parsed), {
@@ -551,16 +552,50 @@ function setInventoryData(rows, { mode, rawCount, fileName = "" }) {
   rawRecordCount = rawCount;
   if (mode === "customer") customerFileName = fileName;
 
-  inventoryData = aggregateLatestInventory(rows, {
+  baseInventoryData = aggregateLatestInventory(rows, {
     mode,
     currentDate: getLocalTodayISO()
   });
+  rebuildInventoryFromBase();
   pruneActionState();
   resetFilters();
   updateDataSourceDisplay();
   updateDashboardSummary();
   renderCriticalAlert();
   applyFilters();
+  renderSavedReceivingRecords();
+}
+
+function rebuildInventoryFromBase() {
+  const adjustedInventory = reconciliationController
+    ? reconciliationController.applyToInventory(baseInventoryData)
+    : baseInventoryData;
+  inventoryData = adjustedInventory.map((item) => {
+    const stockStatus = classifyStock(item.currentStock, item.restockAt);
+    return {
+      ...item,
+      stockStatus,
+      status: getDisplayStatus(stockStatus, item.daysToExpiry)
+    };
+  });
+}
+
+function refreshInventoryAfterReconciliation() {
+  rebuildInventoryFromBase();
+  pruneActionState();
+  updateDashboardSummary();
+  renderCriticalAlert();
+  applyFilters();
+}
+
+function getCurrentSourceKey() {
+  return dataMode === "customer" ? customerSourceKey : "demo";
+}
+
+function getCurrentSourceLabel() {
+  return dataMode === "customer"
+    ? `Customer inventory · ${customerFileName || "local CSV"}`
+    : "Demo inventory";
 }
 
 function pruneActionState() {
@@ -631,7 +666,8 @@ async function handleInventoryFile(event) {
   }
 
   try {
-    const parsed = parseCSV(await file.text());
+    const fileText = await file.text();
+    const parsed = parseCSV(fileText);
     if (parsed.records.length > MAX_UPLOAD_ROWS) {
       showUploadError(`This CSV contains more than ${MAX_UPLOAD_ROWS.toLocaleString()} rows.`);
       return;
@@ -641,7 +677,11 @@ async function handleInventoryFile(event) {
       return;
     }
 
-    pendingUpload = { fileName: file.name, parsed };
+    pendingUpload = {
+      fileName: file.name,
+      parsed,
+      sourceKey: await createCustomerSourceKey(fileText)
+    };
     renderColumnMappings(parsed, file.name);
     showUploadSuccess(
       `Read ${parsed.records.length.toLocaleString()} rows locally. Review the column matches before importing.`
@@ -719,6 +759,7 @@ function importMappedInventory(event) {
 
   customerRows = validation.rows;
   customerFileName = pendingUpload.fileName;
+  customerSourceKey = pendingUpload.sourceKey;
   sentRequests = new Set();
   removalFlags = new Set();
   setInventoryData(customerRows, {
@@ -731,6 +772,23 @@ function importMappedInventory(event) {
   showUploadSuccess(
     `Loaded ${customerRows.length.toLocaleString()} valid rows from ${customerFileName}. The file remains local to this tab.`
   );
+}
+
+async function createCustomerSourceKey(fileText) {
+  if (crypto.subtle && typeof TextEncoder !== "undefined") {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fileText));
+    const hash = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    return `customer:${hash}`;
+  }
+
+  let hash = 2166136261;
+  for (let index = 0; index < fileText.length; index += 1) {
+    hash ^= fileText.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `customer:${(hash >>> 0).toString(16)}:${fileText.length}`;
 }
 
 function cancelPendingUpload() {

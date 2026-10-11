@@ -107,6 +107,10 @@
                 <input id="receiving-product-name" name="productName" type="text" maxlength="120" autocomplete="off" required>
               </div>
               <div class="receiving-field">
+                <label for="receiving-brand">Brand <span aria-hidden="true">*</span></label>
+                <input id="receiving-brand" name="brand" type="text" maxlength="120" autocomplete="organization" required>
+              </div>
+              <div class="receiving-field">
                 <label for="boxes-per-row">Boxes per row <span aria-hidden="true">*</span></label>
                 <input id="boxes-per-row" name="boxesPerRow" type="number" min="1" step="1" inputmode="numeric" required>
               </div>
@@ -196,6 +200,21 @@
           </div>
           <p>Records stay only in this browser. They are not sent to suppliers or a server.</p>
           <ul id="saved-receiving-list"></ul>
+        </section>
+
+        <section id="reconciliation-review" class="reconciliation-review" tabindex="-1" aria-labelledby="reconciliation-title" hidden>
+          <div class="saved-receiving-heading">
+            <div>
+              <p class="eyebrow">Local approval demonstration</p>
+              <h3 id="reconciliation-title">Inventory reconciliation</h3>
+            </div>
+            <button id="close-reconciliation" class="text-button" type="button">Close review</button>
+          </div>
+          <p class="prototype-warning">
+            This browser-only prototype records a name but does not authenticate a supervisor or provide a permanent, multi-user audit history.
+          </p>
+          <div id="reconciliation-feedback" class="upload-feedback" role="status" aria-live="polite" hidden></div>
+          <div id="reconciliation-content"></div>
         </section>
       </section>
 
@@ -404,6 +423,8 @@
 
   <script src="inventory-core.js"></script>
   <script src="receiving-core.js"></script>
+  <script src="reconciliation-core.js"></script>
+  <script src="reconciliation-ui.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

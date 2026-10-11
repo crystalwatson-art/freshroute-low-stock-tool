@@ -3,9 +3,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const receiving = require("../receiving-core.js");
+const calculate = (input) => receiving.calculateReceivingItem({ brand: "Test Brand", ...input });
 
 test("calculates boxes and units from rows, layers, and units per box", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "MILK-01",
     productName: "Whole Milk",
     boxesPerRow: "4",
@@ -22,7 +23,7 @@ test("calculates boxes and units from rows, layers, and units per box", () => {
 });
 
 test("subtracts damaged boxes and individual units exactly once", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "YOG-02",
     productName: "Greek Yogurt",
     boxesPerRow: 4,
@@ -40,7 +41,7 @@ test("subtracts damaged boxes and individual units exactly once", () => {
 });
 
 test("allows all boxes to be damaged when no extra individual damage is entered", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "CREAM-03",
     productName: "Cream",
     boxesPerRow: 2,
@@ -56,7 +57,7 @@ test("allows all boxes to be damaged when no extra individual damage is entered"
 });
 
 test("rejects individual damage that exceeds units outside damaged boxes", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "CHEESE-04",
     productName: "Cheddar",
     boxesPerRow: 2,
@@ -71,7 +72,7 @@ test("rejects individual damage that exceeds units outside damaged boxes", () =>
 });
 
 test("rejects damaged boxes greater than the received box count", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "BUTTER-05",
     productName: "Butter",
     boxesPerRow: 2,
@@ -86,7 +87,7 @@ test("rejects damaged boxes greater than the received box count", () => {
 });
 
 test("rejects negative, fractional, non-numeric, and zero required counts", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "EGG-06",
     productName: "Eggs",
     boxesPerRow: "-1",
@@ -99,7 +100,7 @@ test("rejects negative, fractional, non-numeric, and zero required counts", () =
   assert.equal(result.valid, false);
   assert.ok(result.errors.length >= 4);
 
-  const zero = receiving.calculateReceivingItem({
+  const zero = calculate({
     sku: "EGG-06",
     productName: "Eggs",
     boxesPerRow: "0",
@@ -110,7 +111,7 @@ test("rejects negative, fractional, non-numeric, and zero required counts", () =
   assert.match(zero.errors.join(" "), /at least 1/);
 });
 
-test("requires both a SKU and product name", () => {
+test("requires a SKU, product name, and brand", () => {
   const result = receiving.calculateReceivingItem({
     boxesPerRow: 1,
     layers: 1,
@@ -120,10 +121,11 @@ test("requires both a SKU and product name", () => {
   assert.equal(result.valid, false);
   assert.match(result.errors.join(" "), /Product \/ SKU is required/);
   assert.match(result.errors.join(" "), /Product name is required/);
+  assert.match(result.errors.join(" "), /Brand is required/);
 });
 
 test("rejects product identifiers that exceed the field limits", () => {
-  const result = receiving.calculateReceivingItem({
+  const result = calculate({
     sku: "S".repeat(81),
     productName: "P".repeat(121),
     boxesPerRow: 1,
@@ -137,7 +139,7 @@ test("rejects product identifiers that exceed the field limits", () => {
 });
 
 test("summarizes multiple received items for supervisor review", () => {
-  const first = receiving.calculateReceivingItem({
+  const first = calculate({
     sku: "A",
     productName: "Milk",
     boxesPerRow: 2,
@@ -146,7 +148,7 @@ test("summarizes multiple received items for supervisor review", () => {
     damagedBoxes: 1,
     damagedUnits: 2
   }).item;
-  const second = receiving.calculateReceivingItem({
+  const second = calculate({
     sku: "B",
     productName: "Yogurt",
     boxesPerRow: 3,
