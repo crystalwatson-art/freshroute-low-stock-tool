@@ -2,17 +2,35 @@
 
 const DATA_FILE = "dairy_goods_sales_cleaned.csv";
 const PAGE_SIZE = 10;
-const EXPIRY_WARNING_DAYS = 14;
 const CRITICAL_EXPIRY_DAYS = 3;
 const REQUESTS_STORAGE_KEY = "freshroute-restock-requests";
 const REMOVALS_STORAGE_KEY = "freshroute-removal-flags";
 const THEME_STORAGE_KEY = "freshroute-theme";
 const BACK_TO_TOP_THRESHOLD = 350;
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_UPLOAD_ROWS = 50000;
+
+const {
+  FIELD_DEFINITIONS,
+  parseCSV,
+  parsedRecordsToObjects,
+  suggestColumnMappings,
+  validateMappedRows,
+  aggregateLatestInventory,
+  isExpired,
+  isExpiringSoon,
+  sortByPriority,
+  getLocalTodayISO
+} = FreshRouteCore;
 
 let inventoryData = [];
 let filteredInventoryData = [];
 let currentPage = 1;
 let rawRecordCount = 0;
+let dataMode = "demo";
+let customerRows = [];
+let customerFileName = "";
+let pendingUpload = null;
 let sentRequests = loadSentRequests();
 let removalFlags = loadRemovalFlags();
 
@@ -22,6 +40,12 @@ const refreshButton = document.getElementById("refresh-data");
 const themeToggle = document.getElementById("theme-toggle");
 const backToTopButton = document.getElementById("back-to-top");
 const tableBody = document.getElementById("inventory-table-body");
+const inventoryFileInput = document.getElementById("inventory-file");
+const useDemoButton = document.getElementById("use-demo-data");
+const mappingPanel = document.getElementById("column-mapping-panel");
+const mappingFields = document.getElementById("column-mapping-fields");
+const uploadSuccess = document.getElementById("upload-success");
+const uploadError = document.getElementById("upload-error");
 const paginationContainers = [
   document.getElementById("pagination-top"),
   document.getElementById("pagination-bottom")
@@ -32,11 +56,15 @@ document.addEventListener("DOMContentLoaded", () => {
   applySavedTheme();
   statusFilter.addEventListener("change", handleStatusFilterChange);
   productSearch.addEventListener("input", applyFilters);
-  refreshButton.addEventListener("click", loadInventoryData);
+  refreshButton.addEventListener("click", refreshCurrentData);
   themeToggle.addEventListener("click", toggleTheme);
   backToTopButton.addEventListener("click", scrollToTop);
   window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
   tableBody.addEventListener("click", handleTableAction);
+  inventoryFileInput.addEventListener("change", handleInventoryFile);
+  useDemoButton.addEventListener("click", () => loadDemoData({ announce: true }));
+  mappingPanel.addEventListener("submit", importMappedInventory);
+  document.getElementById("cancel-upload").addEventListener("click", cancelPendingUpload);
   summaryCards.forEach((card) => {
     card.addEventListener("click", activateSummaryCard);
     card.addEventListener("keydown", handleSummaryCardKeydown);
@@ -46,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
     container.addEventListener("submit", handlePageJump);
   });
   updateBackToTopVisibility();
-  loadInventoryData();
+  loadDemoData();
 });
 
 function updateBackToTopVisibility() {
@@ -60,222 +88,291 @@ function scrollToTop() {
   });
 }
 
-async function loadInventoryData() {
+async function refreshCurrentData() {
+  if (dataMode === "customer") {
+    setInventoryData(customerRows, {
+      mode: "customer",
+      rawCount: customerRows.length,
+      fileName: customerFileName
+    });
+    showUploadSuccess(
+      `Customer inventory recalculated locally using today’s date (${getLocalTodayISO()}).`
+    );
+    return;
+  }
+
+  await loadDemoData({ announce: true });
+}
+
+async function loadDemoData({ announce = false } = {}) {
   const loadingMessage = document.getElementById("loading-message");
   const errorMessage = document.getElementById("error-message");
 
+  loadingMessage.textContent = "Loading FreshRoute demo data…";
   loadingMessage.hidden = false;
   errorMessage.hidden = true;
   refreshButton.disabled = true;
   tableBody.innerHTML = "";
 
   try {
-    const response = await fetch(`${DATA_FILE}?refresh=${Date.now()}`, {
-      cache: "no-store"
+    const response = await fetch(`${DATA_FILE}?refresh=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Unable to load data. Status: ${response.status}`);
+
+    const parsed = parseCSV(await response.text());
+    if (parsed.errors.length > 0) throw new Error(parsed.errors[0]);
+
+    dataMode = "demo";
+    customerRows = [];
+    customerFileName = "";
+    sentRequests = loadSentRequests();
+    removalFlags = loadRemovalFlags();
+    setInventoryData(parsedRecordsToObjects(parsed), {
+      mode: "demo",
+      rawCount: parsed.records.length
     });
-
-    if (!response.ok) {
-      throw new Error(`Unable to load data. Status: ${response.status}`);
-    }
-
-    const rows = parseCSV(await response.text());
-    rawRecordCount = rows.length;
-    inventoryData = aggregateLatestInventory(rows);
-    sentRequests = new Set(
-      [...sentRequests].filter((requestKey) =>
-        inventoryData.some((item) =>
-          item.requestKey === requestKey &&
-          ["low-stock", "reorder-soon"].includes(item.status)
-        )
-      )
-    );
-    removalFlags = new Set(
-      [...removalFlags].filter((requestKey) =>
-        inventoryData.some((item) =>
-          item.requestKey === requestKey && item.status === "expired"
-        )
-      )
-    );
-    saveSentRequests();
-    saveRemovalFlags();
-
-    updateDashboardSummary();
-    renderCriticalAlert();
-    applyFilters();
     loadingMessage.hidden = true;
+    if (announce) showUploadSuccess("Demo mode restored with the original classroom dataset.");
   } catch (error) {
     loadingMessage.hidden = true;
     errorMessage.hidden = false;
     errorMessage.textContent =
-      "FreshRoute could not load the inventory file. Run the dashboard from a local web server, then try again.";
+      "FreshRoute could not load the demo inventory file. Run the dashboard from a local web server, then try again.";
     console.error(error);
   } finally {
     refreshButton.disabled = false;
   }
 }
 
-function parseCSV(csvText) {
-  const lines = csvText
-    .trim()
-    .split(/\r?\n/)
-    .filter((line) => line.trim() !== "");
+function setInventoryData(rows, { mode, rawCount, fileName = "" }) {
+  dataMode = mode;
+  rawRecordCount = rawCount;
+  if (mode === "customer") customerFileName = fileName;
 
-  if (lines.length < 2) {
-    return [];
+  inventoryData = aggregateLatestInventory(rows, {
+    mode,
+    currentDate: getLocalTodayISO()
+  });
+  pruneActionState();
+  resetFilters();
+  updateDataSourceDisplay();
+  updateDashboardSummary();
+  renderCriticalAlert();
+  applyFilters();
+}
+
+function pruneActionState() {
+  sentRequests = new Set(
+    [...sentRequests].filter((requestKey) =>
+      inventoryData.some((item) =>
+        item.requestKey === requestKey && ["low-stock", "reorder-soon"].includes(item.status)
+      )
+    )
+  );
+  removalFlags = new Set(
+    [...removalFlags].filter((requestKey) =>
+      inventoryData.some((item) => item.requestKey === requestKey && item.status === "expired")
+    )
+  );
+
+  if (dataMode === "demo") {
+    saveSentRequests();
+    saveRemovalFlags();
+  }
+}
+
+function resetFilters() {
+  statusFilter.value = "all";
+  productSearch.value = "";
+  currentPage = 1;
+  updateActiveSummaryCard("all");
+}
+
+function updateDataSourceDisplay() {
+  const badge = document.getElementById("data-mode-badge");
+  const description = document.getElementById("data-mode-description");
+  const subtitle = document.querySelector(".subtitle");
+
+  if (dataMode === "customer") {
+    badge.textContent = "Customer inventory";
+    badge.classList.add("customer-mode");
+    description.textContent =
+      `${customerFileName} is loaded only in this tab. Expiration is calculated from today (${getLocalTodayISO()}).`;
+    subtitle.textContent = "Operational inventory signals from your locally loaded CSV.";
+    useDemoButton.disabled = false;
+  } else {
+    badge.textContent = "Demo mode";
+    badge.classList.remove("customer-mode");
+    description.textContent =
+      "Using the original 4,325-record classroom dataset with historical snapshot dates.";
+    subtitle.textContent = "Latest inventory signals for every unique dairy SKU.";
+    useDemoButton.disabled = true;
+  }
+}
+
+async function handleInventoryFile(event) {
+  const file = event.target.files[0];
+  clearUploadFeedback();
+  mappingPanel.hidden = true;
+  pendingUpload = null;
+
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    showUploadError("Choose a file with a .csv extension.");
+    inventoryFileInput.value = "";
+    return;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    showUploadError("This CSV is larger than 5 MB. Split it into a smaller inventory file and try again.");
+    inventoryFileInput.value = "";
+    return;
   }
 
-  const headers = parseCSVLine(lines[0]).map((header) => header.trim());
+  try {
+    const parsed = parseCSV(await file.text());
+    if (parsed.records.length > MAX_UPLOAD_ROWS) {
+      showUploadError(`This CSV contains more than ${MAX_UPLOAD_ROWS.toLocaleString()} rows.`);
+      return;
+    }
+    if (parsed.errors.length > 0) {
+      showUploadError("FreshRoute could not read this CSV.", parsed.errors);
+      return;
+    }
 
-  return lines.slice(1).map((line) => {
-    const values = parseCSVLine(line);
-    return Object.fromEntries(
-      headers.map((header, index) => [header, (values[index] || "").trim()])
+    pendingUpload = { fileName: file.name, parsed };
+    renderColumnMappings(parsed, file.name);
+    showUploadSuccess(
+      `Read ${parsed.records.length.toLocaleString()} rows locally. Review the column matches before importing.`
     );
+  } catch (error) {
+    console.error(error);
+    showUploadError("FreshRoute could not read this file. Confirm it is a valid text CSV and try again.");
+  } finally {
+    inventoryFileInput.value = "";
+  }
+}
+
+function renderColumnMappings(parsed, fileName) {
+  const suggestions = suggestColumnMappings(parsed.headers);
+  const summary = document.getElementById("mapping-file-summary");
+  summary.textContent =
+    `${fileName} · ${parsed.headers.length} columns · ${parsed.records.length.toLocaleString()} rows`;
+  mappingFields.innerHTML = "";
+
+  FIELD_DEFINITIONS.forEach((field) => {
+    const group = document.createElement("div");
+    group.className = "mapping-field";
+    const label = document.createElement("label");
+    const select = document.createElement("select");
+    const selectId = `mapping-${field.key}`;
+
+    label.htmlFor = selectId;
+    label.textContent = field.required ? `${field.label} *` : `${field.label} (optional)`;
+    select.id = selectId;
+    select.name = field.key;
+
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = field.required ? "Choose a column" : "Not included";
+    select.appendChild(emptyOption);
+
+    parsed.headers.forEach((header, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = header || `Column ${index + 1}`;
+      option.selected = suggestions[field.key] === index;
+      select.appendChild(option);
+    });
+
+    group.append(label, select);
+    mappingFields.appendChild(group);
+  });
+
+  mappingPanel.hidden = false;
+  mappingPanel.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "nearest"
   });
 }
 
-function parseCSVLine(line) {
-  const values = [];
-  let currentValue = "";
-  let insideQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    const nextCharacter = line[index + 1];
-
-    if (character === '"' && insideQuotes && nextCharacter === '"') {
-      currentValue += '"';
-      index += 1;
-    } else if (character === '"') {
-      insideQuotes = !insideQuotes;
-    } else if (character === "," && !insideQuotes) {
-      values.push(currentValue);
-      currentValue = "";
-    } else {
-      currentValue += character;
-    }
+function importMappedInventory(event) {
+  event.preventDefault();
+  if (!pendingUpload) {
+    showUploadError("Choose a CSV file before importing inventory.");
+    return;
   }
 
-  values.push(currentValue);
-  return values;
-}
+  const mappings = Object.fromEntries(
+    FIELD_DEFINITIONS.map((field) => [field.key, mappingPanel.elements[field.key].value])
+  );
+  const validation = validateMappedRows(pendingUpload.parsed, mappings);
 
-function aggregateLatestInventory(rows) {
-  const latestBySku = new Map();
+  if (validation.errors.length > 0) {
+    showUploadError(
+      `FreshRoute found ${validation.errors.length.toLocaleString()} issue${validation.errors.length === 1 ? "" : "s"}. No rows were imported.`,
+      validation.errors
+    );
+    return;
+  }
 
-  rows.forEach((row, sourceIndex) => {
-    const productId = cleanText(row.product_id, "Unknown ID");
-    const brand = cleanText(row.brand, "Unknown brand");
-    const requestKey = JSON.stringify([productId, brand]);
-    const snapshotTime = parseDate(row.date)?.getTime() ?? Number.NEGATIVE_INFINITY;
-    const existing = latestBySku.get(requestKey);
-
-    if (
-      !existing ||
-      snapshotTime > existing.snapshotTime ||
-      (snapshotTime === existing.snapshotTime && sourceIndex > existing.sourceIndex)
-    ) {
-      latestBySku.set(requestKey, {
-        row,
-        requestKey,
-        snapshotTime,
-        sourceIndex
-      });
-    }
+  customerRows = validation.rows;
+  customerFileName = pendingUpload.fileName;
+  sentRequests = new Set();
+  removalFlags = new Set();
+  setInventoryData(customerRows, {
+    mode: "customer",
+    rawCount: pendingUpload.parsed.records.length,
+    fileName: customerFileName
   });
-
-  return [...latestBySku.values()]
-    .map(({ row, requestKey }) => cleanInventoryRow(row, requestKey))
-    .sort(sortByPriority);
+  mappingPanel.hidden = true;
+  pendingUpload = null;
+  showUploadSuccess(
+    `Loaded ${customerRows.length.toLocaleString()} valid rows from ${customerFileName}. The file remains local to this tab.`
+  );
 }
 
-function cleanInventoryRow(row, requestKey) {
-  const currentStock = toNumber(row.quantity_in_stock_literskg);
-  const rawMinimumLevel = toNumber(row.minimum_stock_threshold_literskg);
-  const restockAt = rawMinimumLevel === null ? null : Math.ceil(rawMinimumLevel);
-  const reorderQuantity = toNumber(row.reorder_quantity_literskg);
-  const daysToExpiry = calculateDaysToExpiry(row.date, row.expiration_date);
-  const stockStatus = classifyStock(currentStock, restockAt);
-
-  return {
-    requestKey,
-    productId: cleanText(row.product_id, "Unknown ID"),
-    productName: cleanText(row.product_name, "Unknown product"),
-    brand: cleanText(row.brand, "Unknown brand"),
-    snapshotDate: cleanText(row.date, "Unknown date"),
-    currentStock,
-    restockAt,
-    reorderQuantity,
-    daysToExpiry,
-    stockStatus,
-    status: getDisplayStatus(stockStatus, daysToExpiry)
-  };
+function cancelPendingUpload() {
+  pendingUpload = null;
+  mappingPanel.hidden = true;
+  mappingFields.innerHTML = "";
+  clearUploadFeedback();
 }
 
-function classifyStock(currentStock, restockAt) {
-  if (currentStock === null || restockAt === null) {
-    return "needs-review";
-  }
-
-  if (currentStock <= restockAt) {
-    return "low-stock";
-  }
-
-  if (currentStock <= restockAt * 1.2) {
-    return "reorder-soon";
-  }
-
-  return "adequate-stock";
+function clearUploadFeedback() {
+  uploadSuccess.hidden = true;
+  uploadSuccess.textContent = "";
+  uploadError.hidden = true;
+  uploadError.textContent = "";
 }
 
-function getDisplayStatus(stockStatus, daysToExpiry) {
-  if (isExpired(daysToExpiry)) {
-    return "expired";
-  }
-
-  if (daysToExpiry === 0) {
-    return "expires-today";
-  }
-
-  if (isExpiringSoon(daysToExpiry)) {
-    return "expiring-soon";
-  }
-
-  if (stockStatus === "low-stock" || stockStatus === "reorder-soon") {
-    return stockStatus;
-  }
-
-  return stockStatus === "needs-review" ? "needs-review" : "healthy-stock";
+function showUploadSuccess(message) {
+  uploadError.hidden = true;
+  uploadSuccess.textContent = message;
+  uploadSuccess.hidden = false;
 }
 
-function isExpired(daysToExpiry) {
-  return daysToExpiry !== null && daysToExpiry < 0;
-}
+function showUploadError(message, details = []) {
+  uploadSuccess.hidden = true;
+  uploadError.replaceChildren();
+  const summary = document.createElement("strong");
+  summary.textContent = message;
+  uploadError.appendChild(summary);
 
-function isExpiringSoon(daysToExpiry) {
-  return daysToExpiry !== null &&
-    daysToExpiry >= 0 &&
-    daysToExpiry <= EXPIRY_WARNING_DAYS;
-}
-
-function calculateDaysToExpiry(snapshotDate, expirationDate) {
-  const start = parseDate(snapshotDate);
-  const end = parseDate(expirationDate);
-
-  if (!start || !end) {
-    return null;
+  if (details.length > 0) {
+    const list = document.createElement("ul");
+    details.slice(0, 8).forEach((detail) => {
+      const item = document.createElement("li");
+      item.textContent = detail;
+      list.appendChild(item);
+    });
+    if (details.length > 8) {
+      const more = document.createElement("li");
+      more.textContent = `Plus ${details.length - 8} more issue${details.length - 8 === 1 ? "" : "s"}.`;
+      list.appendChild(more);
+    }
+    uploadError.appendChild(list);
   }
 
-  return Math.round((end - start) / 86400000);
-}
-
-function parseDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  uploadError.hidden = false;
 }
 
 function updateDashboardSummary() {
@@ -291,7 +388,7 @@ function updateDashboardSummary() {
   const healthyStock = inventoryData.filter(
     (item) => matchesStatusFilter(item, "healthy-stock")
   ).length;
-  const requestsSent = inventoryData.filter((item) =>
+  const requestsSaved = inventoryData.filter((item) =>
     matchesStatusFilter(item, "requests-sent")
   ).length;
 
@@ -300,9 +397,10 @@ function updateDashboardSummary() {
   document.getElementById("expiring-soon-count").textContent = expiringSoon;
   document.getElementById("expired-count").textContent = expired;
   document.getElementById("healthy-stock-count").textContent = healthyStock;
-  document.getElementById("requests-sent-count").textContent = requestsSent;
-  document.getElementById("source-data-note").textContent =
-    `${rawRecordCount.toLocaleString()} raw source records · ${inventoryData.length} latest unique SKUs`;
+  document.getElementById("requests-sent-count").textContent = requestsSaved;
+  document.getElementById("source-data-note").textContent = dataMode === "customer"
+    ? `${rawRecordCount.toLocaleString()} local rows · ${inventoryData.length} unique SKUs · Calculated ${getLocalTodayISO()}`
+    : `${rawRecordCount.toLocaleString()} raw source records · ${inventoryData.length} latest unique SKUs`;
   updateActiveInventoryProgress();
 }
 
@@ -325,21 +423,16 @@ function renderCriticalAlert() {
   const summary = document.getElementById("critical-alert-summary");
   const productList = document.getElementById("critical-products");
   const criticalItems = inventoryData
-    .filter((item) =>
-      item.daysToExpiry !== null && item.daysToExpiry <= CRITICAL_EXPIRY_DAYS
-    )
-    .sort((firstItem, secondItem) =>
-      firstItem.daysToExpiry - secondItem.daysToExpiry
-    );
+    .filter((item) => item.daysToExpiry !== null && item.daysToExpiry <= CRITICAL_EXPIRY_DAYS)
+    .sort((firstItem, secondItem) => firstItem.daysToExpiry - secondItem.daysToExpiry);
 
   alert.hidden = criticalItems.length === 0;
   productList.innerHTML = "";
+  if (criticalItems.length === 0) return;
 
-  if (criticalItems.length === 0) {
-    return;
-  }
-
-  summary.textContent = `${criticalItems.length} SKUs are expired or due within 72 hours of their latest inventory date.`;
+  summary.textContent = dataMode === "customer"
+    ? `${criticalItems.length} SKUs are expired or due within 72 hours of today.`
+    : `${criticalItems.length} SKUs are expired or due within 72 hours of their latest inventory date.`;
   criticalItems.slice(0, 3).forEach((item) => {
     const listItem = document.createElement("li");
     listItem.innerHTML = `<strong>${escapeHTML(item.productName)}</strong><span>${escapeHTML(item.brand)} · ${formatExpiry(item.daysToExpiry)}</span>`;
@@ -361,8 +454,7 @@ function applyFilters() {
   filteredInventoryData = inventoryData
     .filter((item) => {
       const matchesStatus = matchesStatusFilter(item, selectedStatus);
-      const searchableText =
-        `${item.productName} ${item.brand} ${item.productId}`.toLowerCase();
+      const searchableText = `${item.productName} ${item.brand} ${item.productId}`.toLowerCase();
       return matchesStatus && searchableText.includes(searchText);
     })
     .sort(sortByPriority);
@@ -378,7 +470,6 @@ function handleStatusFilterChange() {
 
 function activateSummaryCard(event) {
   const selectedCard = event.currentTarget;
-
   statusFilter.value = selectedCard.dataset.statusFilter;
   productSearch.value = "";
   currentPage = 1;
@@ -391,10 +482,7 @@ function activateSummaryCard(event) {
 }
 
 function handleSummaryCardKeydown(event) {
-  if (event.key !== "Enter" && event.key !== " ") {
-    return;
-  }
-
+  if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
   activateSummaryCard(event);
 }
@@ -412,48 +500,16 @@ function matchesStatusFilter(item, selectedStatus) {
   if (selectedStatus === "needs-restock") {
     return ["low-stock", "reorder-soon"].includes(item.status);
   }
-  if (selectedStatus === "requests-sent") {
-    return sentRequests.has(item.requestKey);
-  }
+  if (selectedStatus === "requests-sent") return sentRequests.has(item.requestKey);
   if (selectedStatus === "expired") return isExpired(item.daysToExpiry);
   if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry);
   return item.status === selectedStatus;
-}
-
-function sortByPriority(firstItem, secondItem) {
-  const priorityOrder = {
-    "expired": 1,
-    "expires-today": 2,
-    "low-stock": 3,
-    "reorder-soon": 4,
-    "expiring-soon": 5,
-    "healthy-stock": 6,
-    "needs-review": 7
-  };
-  const priorityDifference =
-    (priorityOrder[firstItem.status] || 7) -
-    (priorityOrder[secondItem.status] || 7);
-
-  if (priorityDifference !== 0) {
-    return priorityDifference;
-  }
-
-  const expiryDifference =
-    (firstItem.daysToExpiry ?? Number.MAX_SAFE_INTEGER) -
-    (secondItem.daysToExpiry ?? Number.MAX_SAFE_INTEGER);
-
-  if (expiryDifference !== 0) {
-    return expiryDifference;
-  }
-
-  return firstItem.productName.localeCompare(secondItem.productName);
 }
 
 function renderInventoryTable() {
   const itemCount = filteredInventoryData.length;
   const totalPages = Math.max(1, Math.ceil(itemCount / PAGE_SIZE));
   currentPage = Math.min(Math.max(currentPage, 1), totalPages);
-
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const endIndex = Math.min(startIndex + PAGE_SIZE, itemCount);
   const visibleItems = filteredInventoryData.slice(startIndex, endIndex);
@@ -481,12 +537,12 @@ function createInventoryRow(item) {
   const row = document.createElement("tr");
   const isExpiredItem = item.status === "expired";
   const canRequestRestock = ["low-stock", "reorder-soon"].includes(item.status);
-  const requestSent = sentRequests.has(item.requestKey);
+  const requestSaved = sentRequests.has(item.requestKey);
   const removalFlagged = removalFlags.has(item.requestKey);
   const actionMarkup = isExpiredItem
     ? `<button class="removal-button${removalFlagged ? " is-flagged" : ""}" type="button" data-removal-key="${escapeHTML(item.requestKey)}" ${removalFlagged ? "disabled" : ""}>${removalFlagged ? "Removal Flagged ✓" : "Flag for Removal"}</button>`
     : canRequestRestock
-    ? `<button class="request-button${requestSent ? " is-sent" : ""}" type="button" data-request-key="${escapeHTML(item.requestKey)}" ${requestSent ? "disabled" : ""}>${requestSent ? "Request Sent ✓" : "Send Restock Request"}</button>`
+    ? `<button class="request-button${requestSaved ? " is-sent" : ""}" type="button" data-request-key="${escapeHTML(item.requestKey)}" ${requestSaved ? "disabled" : ""}>${requestSaved ? "Request Saved ✓" : "Save Local Request"}</button>`
     : '<span class="no-action">No action needed</span>';
 
   row.innerHTML = `
@@ -503,12 +559,10 @@ function createInventoryRow(item) {
 
 function handleTableAction(event) {
   const removalButton = event.target.closest("[data-removal-key]");
-
   if (removalButton && !removalButton.disabled) {
     const matchingItem = inventoryData.find(
       (item) => item.requestKey === removalButton.dataset.removalKey
     );
-
     if (matchingItem?.status === "expired") {
       removalFlags.add(matchingItem.requestKey);
       saveRemovalFlags();
@@ -519,18 +573,11 @@ function handleTableAction(event) {
   }
 
   const button = event.target.closest("[data-request-key]");
-
-  if (!button || button.disabled) {
-    return;
-  }
-
+  if (!button || button.disabled) return;
   const matchingItem = inventoryData.find(
     (item) => item.requestKey === button.dataset.requestKey
   );
-
-  if (!matchingItem || !["low-stock", "reorder-soon"].includes(matchingItem.status)) {
-    return;
-  }
+  if (!matchingItem || !["low-stock", "reorder-soon"].includes(matchingItem.status)) return;
 
   sentRequests.add(matchingItem.requestKey);
   saveSentRequests();
@@ -540,7 +587,6 @@ function handleTableAction(event) {
 
 function renderPagination(totalPages, itemCount) {
   const pageNumbers = getVisiblePageNumbers(totalPages, currentPage);
-
   paginationContainers.forEach((container) => {
     const label = container.id === "pagination-top" ? "above table" : "below table";
     container.innerHTML = `
@@ -572,41 +618,26 @@ function paginationButton(label, page, disabled, isCurrent = false) {
 }
 
 function getVisiblePageNumbers(totalPages, activePage) {
-  if (totalPages <= 5) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
+  if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
   const start = Math.min(Math.max(activePage - 2, 1), totalPages - 4);
   return Array.from({ length: 5 }, (_, index) => start + index);
 }
 
 function handlePaginationClick(event) {
   const button = event.target.closest("[data-page]");
-
-  if (!button || button.disabled) {
-    return;
-  }
-
+  if (!button || button.disabled) return;
   goToPage(Number(button.dataset.page));
 }
 
 function handlePageJump(event) {
-  if (!event.target.matches(".jump-form")) {
-    return;
-  }
-
+  if (!event.target.matches(".jump-form")) return;
   event.preventDefault();
-  const input = event.target.elements.page;
-  goToPage(Number(input.value));
+  goToPage(Number(event.target.elements.page.value));
 }
 
 function goToPage(page) {
   const totalPages = Math.max(1, Math.ceil(filteredInventoryData.length / PAGE_SIZE));
-
-  if (!Number.isInteger(page) || page < 1 || page > totalPages) {
-    return;
-  }
-
+  if (!Number.isInteger(page) || page < 1 || page > totalPages) return;
   currentPage = page;
   renderInventoryTable();
   document.getElementById("inventory-title").scrollIntoView({
@@ -630,7 +661,6 @@ function getStatusLabel(status) {
 
 function getExpiryClass(days) {
   if (days === null) return "";
-  if (days <= 0) return "critical-expiry";
   if (days <= CRITICAL_EXPIRY_DAYS) return "critical-expiry";
   if (isExpiringSoon(days)) return "warning-expiry";
   return "";
@@ -649,17 +679,6 @@ function formatWholeNumber(value) {
   return Math.round(value).toLocaleString();
 }
 
-function toNumber(value) {
-  if (value === undefined || value === null || value === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function cleanText(value, fallback) {
-  const cleanedValue = String(value || "").trim();
-  return cleanedValue || fallback;
-}
-
 function loadSentRequests() {
   try {
     const savedRequests = JSON.parse(localStorage.getItem(REQUESTS_STORAGE_KEY) || "[]");
@@ -671,6 +690,7 @@ function loadSentRequests() {
 }
 
 function saveSentRequests() {
+  if (dataMode !== "demo") return;
   try {
     localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify([...sentRequests]));
   } catch (error) {
@@ -689,6 +709,7 @@ function loadRemovalFlags() {
 }
 
 function saveRemovalFlags() {
+  if (dataMode !== "demo") return;
   try {
     localStorage.setItem(REMOVALS_STORAGE_KEY, JSON.stringify([...removalFlags]));
   } catch (error) {
@@ -698,20 +719,17 @@ function saveRemovalFlags() {
 
 function applySavedTheme() {
   let savedTheme = "dark";
-
   try {
     savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "dark";
   } catch (error) {
     console.warn("Theme preference could not be read.", error);
   }
-
   setTheme(savedTheme === "light" ? "light" : "dark");
 }
 
 function toggleTheme() {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   setTheme(nextTheme);
-
   try {
     localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   } catch (error) {

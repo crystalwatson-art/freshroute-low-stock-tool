@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
   <title>FreshRoute Inventory Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f7bff'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='Arial' font-size='24' font-weight='700' fill='white'%3EFR%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 
@@ -33,6 +34,39 @@
         </button>
       </div>
     </header>
+
+    <section class="data-source-panel" aria-labelledby="data-source-title">
+      <div class="data-source-copy">
+        <div class="data-source-title-row">
+          <p class="eyebrow">Data source</p>
+          <span id="data-mode-badge" class="mode-badge">Demo mode</span>
+        </div>
+        <h2 id="data-source-title">Use your inventory CSV</h2>
+        <p id="data-mode-description">Using the original 4,325-record classroom dataset with historical snapshot dates.</p>
+        <p class="privacy-note">Your CSV stays in this browser tab. FreshRoute does not upload or permanently save the file.</p>
+      </div>
+      <div class="data-source-actions">
+        <input id="inventory-file" class="file-input" type="file" accept=".csv,text/csv" aria-label="Choose inventory CSV file">
+        <button id="use-demo-data" class="secondary-button" type="button" disabled>Use demo data</button>
+      </div>
+
+      <div id="upload-success" class="upload-feedback success-message" role="status" aria-live="polite" hidden></div>
+      <div id="upload-error" class="upload-feedback error-message" role="alert" hidden></div>
+
+      <form id="column-mapping-panel" class="column-mapping-panel" hidden>
+        <div class="mapping-heading">
+          <div>
+            <p class="eyebrow">Match columns</p>
+            <h3>Connect your headings to FreshRoute</h3>
+            <p id="mapping-file-summary"></p>
+          </div>
+          <button id="cancel-upload" class="text-button" type="button">Cancel</button>
+        </div>
+        <div id="column-mapping-fields" class="column-mapping-fields"></div>
+        <p class="mapping-help"><span aria-hidden="true">*</span> Required fields. Dates may use YYYY-MM-DD or MM/DD/YYYY.</p>
+        <button class="primary-button" type="submit">Use this inventory</button>
+      </form>
+    </section>
 
     <section class="summary-grid" aria-label="Inventory summary">
       <article class="summary-card metric-skus is-active" role="button" tabindex="0" data-status-filter="all" aria-controls="inventory-table" aria-pressed="true">
@@ -83,9 +117,9 @@
       <article class="summary-card metric-requests" role="button" tabindex="0" data-status-filter="requests-sent" aria-controls="inventory-table" aria-pressed="false">
         <span class="metric-icon" aria-hidden="true">↗</span>
         <div>
-          <p>Requests Sent</p>
+          <p>Requests Saved</p>
           <strong id="requests-sent-count">0</strong>
-          <small>Saved on this device</small>
+          <small>Local actions, not placed orders</small>
         </div>
       </article>
     </section>
@@ -137,7 +171,7 @@
             <option value="expired">Expired</option>
             <option value="expiring-soon">Expiring Soon</option>
             <option value="healthy-stock">Healthy Stock</option>
-            <option value="requests-sent">Requests Sent</option>
+            <option value="requests-sent">Requests Saved</option>
           </select>
         </div>
       </form>
@@ -171,6 +205,7 @@
 
   <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top" hidden>↑</button>
 
+  <script src="inventory-core.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
