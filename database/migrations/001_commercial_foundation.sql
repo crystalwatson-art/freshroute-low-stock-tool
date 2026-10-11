@@ -24,9 +24,11 @@ create table app_users (
   id uuid primary key,
   email text not null,
   display_name text not null check (length(trim(display_name)) between 1 and 120),
-  created_at timestamptz not null default now(),
-  unique (lower(email))
+  created_at timestamptz not null default now()
 );
+
+create unique index app_users_email_case_insensitive_unique
+  on app_users (lower(email));
 
 -- Invite secrets are never stored. Only a one-way hash is retained for server-side validation.
 create table business_invitations (
@@ -99,7 +101,7 @@ create table product_unit_conversions (
 create function validate_product_unit_conversion()
 returns trigger
 language plpgsql
-as 16420
+as $$
 declare
   product_base_unit unit_code;
 begin
@@ -137,7 +139,7 @@ begin
 
   return new;
 end;
-16420;
+$$;
 
 create trigger product_unit_conversions_are_compatible
 before insert or update on product_unit_conversions
