@@ -51,6 +51,9 @@ const paginationContainers = [
   document.getElementById("pagination-bottom")
 ];
 const summaryCards = [...document.querySelectorAll(".summary-card[data-status-filter]")];
+const toolNavigation = document.querySelector(".dashboard-navigation");
+const toolButtons = [...document.querySelectorAll(".nav-tool-button[data-tool-panel]")];
+const toolPanels = [...document.querySelectorAll(".tool-panel")];
 
 document.addEventListener("DOMContentLoaded", () => {
   applySavedTheme();
@@ -58,6 +61,9 @@ document.addEventListener("DOMContentLoaded", () => {
   productSearch.addEventListener("input", applyFilters);
   refreshButton.addEventListener("click", refreshCurrentData);
   themeToggle.addEventListener("click", toggleTheme);
+  toolNavigation.addEventListener("click", handleToolNavigationClick);
+  toolNavigation.addEventListener("keydown", handleToolNavigationKeydown);
+  toolPanels.forEach((panel) => panel.addEventListener("keydown", handleToolPanelKeydown));
   backToTopButton.addEventListener("click", scrollToTop);
   window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
   tableBody.addEventListener("click", handleTableAction);
@@ -76,6 +82,68 @@ document.addEventListener("DOMContentLoaded", () => {
   updateBackToTopVisibility();
   loadDemoData();
 });
+
+function handleToolNavigationClick(event) {
+  const button = event.target.closest(".nav-tool-button[data-tool-panel]");
+  if (!button) return;
+  toggleToolPanel(button);
+}
+
+function handleToolNavigationKeydown(event) {
+  const button = event.target.closest(".nav-tool-button[data-tool-panel]");
+  if (!button) return;
+
+  const currentIndex = toolButtons.indexOf(button);
+  const keyActions = {
+    ArrowRight: (currentIndex + 1) % toolButtons.length,
+    ArrowDown: (currentIndex + 1) % toolButtons.length,
+    ArrowLeft: (currentIndex - 1 + toolButtons.length) % toolButtons.length,
+    ArrowUp: (currentIndex - 1 + toolButtons.length) % toolButtons.length,
+    Home: 0,
+    End: toolButtons.length - 1
+  };
+
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    toggleToolPanel(button);
+  } else if (Object.hasOwn(keyActions, event.key)) {
+    event.preventDefault();
+    toolButtons[keyActions[event.key]].focus();
+  } else if (event.key === "Escape") {
+    closeToolPanels();
+    button.focus();
+  }
+}
+
+function handleToolPanelKeydown(event) {
+  if (event.key !== "Escape") return;
+  const panel = event.currentTarget;
+  const button = toolButtons.find((item) => item.dataset.toolPanel === panel.id);
+  closeToolPanels();
+  button?.focus();
+}
+
+function toggleToolPanel(button) {
+  const shouldOpen = button.getAttribute("aria-expanded") !== "true";
+  const panel = document.getElementById(button.dataset.toolPanel);
+  closeToolPanels();
+
+  if (shouldOpen && panel) {
+    panel.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    button.classList.add("is-active");
+  }
+}
+
+function closeToolPanels() {
+  toolButtons.forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+    button.classList.remove("is-active");
+  });
+  toolPanels.forEach((panel) => {
+    panel.hidden = true;
+  });
+}
 
 function updateBackToTopVisibility() {
   backToTopButton.hidden = window.scrollY < BACK_TO_TOP_THRESHOLD;

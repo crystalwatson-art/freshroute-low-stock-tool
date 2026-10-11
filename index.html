@@ -24,10 +24,6 @@
       </div>
 
       <div class="header-actions">
-        <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to light mode" aria-pressed="false">
-          <span id="theme-icon" aria-hidden="true">☀</span>
-          <span id="theme-label">Light mode</span>
-        </button>
         <button id="refresh-data" class="primary-button" type="button">
           <span aria-hidden="true">↻</span>
           Refresh data
@@ -35,38 +31,87 @@
       </div>
     </header>
 
-    <section class="data-source-panel" aria-labelledby="data-source-title">
-      <div class="data-source-copy">
-        <div class="data-source-title-row">
-          <p class="eyebrow">Data source</p>
-          <span id="data-mode-badge" class="mode-badge">Demo mode</span>
-        </div>
-        <h2 id="data-source-title">Use your inventory CSV</h2>
-        <p id="data-mode-description">Using the original 4,325-record classroom dataset with historical snapshot dates.</p>
-        <p class="privacy-note">Your CSV stays in this browser tab. FreshRoute does not upload or permanently save the file.</p>
-      </div>
-      <div class="data-source-actions">
-        <input id="inventory-file" class="file-input" type="file" accept=".csv,text/csv" aria-label="Choose inventory CSV file">
-        <button id="use-demo-data" class="secondary-button" type="button" disabled>Use demo data</button>
-      </div>
+    <nav class="dashboard-navigation" aria-label="Dashboard tools">
+      <button class="nav-tool-button" id="import-inventory-button" type="button" aria-expanded="false" aria-controls="import-inventory-panel" data-tool-panel="import-inventory-panel">
+        <span aria-hidden="true">⇧</span>
+        Import Inventory
+      </button>
+      <button class="nav-tool-button" id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel" data-tool-panel="settings-panel">
+        <span aria-hidden="true">⚙</span>
+        Settings
+      </button>
+      <button class="nav-tool-button" id="help-button" type="button" aria-expanded="false" aria-controls="help-panel" data-tool-panel="help-panel">
+        <span aria-hidden="true">?</span>
+        Help
+      </button>
+    </nav>
 
-      <div id="upload-success" class="upload-feedback success-message" role="status" aria-live="polite" hidden></div>
-      <div id="upload-error" class="upload-feedback error-message" role="alert" hidden></div>
-
-      <form id="column-mapping-panel" class="column-mapping-panel" hidden>
-        <div class="mapping-heading">
-          <div>
-            <p class="eyebrow">Match columns</p>
-            <h3>Connect your headings to FreshRoute</h3>
-            <p id="mapping-file-summary"></p>
+    <div class="tool-panels">
+      <section id="import-inventory-panel" class="tool-panel data-source-panel" aria-labelledby="data-source-title" hidden>
+        <div class="data-source-copy">
+          <div class="data-source-title-row">
+            <p class="eyebrow">Data source</p>
+            <span id="data-mode-badge" class="mode-badge">Demo mode</span>
           </div>
-          <button id="cancel-upload" class="text-button" type="button">Cancel</button>
+          <h2 id="data-source-title">Use your inventory CSV</h2>
+          <p id="data-mode-description">Using the original 4,325-record classroom dataset with historical snapshot dates.</p>
+          <p class="privacy-note">Your CSV stays in this browser tab. FreshRoute does not upload or permanently save the file.</p>
         </div>
-        <div id="column-mapping-fields" class="column-mapping-fields"></div>
-        <p class="mapping-help"><span aria-hidden="true">*</span> Required fields. Dates may use YYYY-MM-DD or MM/DD/YYYY.</p>
-        <button class="primary-button" type="submit">Use this inventory</button>
-      </form>
-    </section>
+        <div class="data-source-actions">
+          <input id="inventory-file" class="file-input" type="file" accept=".csv,text/csv" aria-label="Choose inventory CSV file">
+          <button id="use-demo-data" class="secondary-button" type="button" disabled>Use demo data</button>
+        </div>
+
+        <div id="upload-success" class="upload-feedback success-message" role="status" aria-live="polite" hidden></div>
+        <div id="upload-error" class="upload-feedback error-message" role="alert" hidden></div>
+
+        <form id="column-mapping-panel" class="column-mapping-panel" hidden>
+          <div class="mapping-heading">
+            <div>
+              <p class="eyebrow">Match columns</p>
+              <h3>Connect your headings to FreshRoute</h3>
+              <p id="mapping-file-summary"></p>
+            </div>
+            <button id="cancel-upload" class="text-button" type="button">Cancel</button>
+          </div>
+          <div id="column-mapping-fields" class="column-mapping-fields"></div>
+          <p class="mapping-help"><span aria-hidden="true">*</span> Required fields. Dates may use YYYY-MM-DD or MM/DD/YYYY.</p>
+          <button class="primary-button" type="submit">Use this inventory</button>
+        </form>
+      </section>
+
+      <section id="settings-panel" class="tool-panel" aria-labelledby="settings-title" hidden>
+        <div class="tool-panel-heading">
+          <p class="eyebrow">Dashboard preferences</p>
+          <h2 id="settings-title">Settings</h2>
+          <p>Choose how FreshRoute appears on this device.</p>
+        </div>
+        <div class="preference-row">
+          <div>
+            <strong>Appearance</strong>
+            <p>Switch between the dark and light dashboard themes.</p>
+          </div>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to light mode" aria-pressed="false">
+            <span id="theme-icon" aria-hidden="true">☀</span>
+            <span id="theme-label">Light mode</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="help-panel" class="tool-panel" aria-labelledby="help-title" hidden>
+        <div class="tool-panel-heading">
+          <p class="eyebrow">FreshRoute guide</p>
+          <h2 id="help-title">Help</h2>
+          <p>Use the dashboard to find inventory that needs attention.</p>
+        </div>
+        <ol class="help-list">
+          <li><strong>Review alerts.</strong> Select a summary card to filter the inventory table.</li>
+          <li><strong>Find an item.</strong> Use search, status filters, and pagination to narrow the results.</li>
+          <li><strong>Use your data.</strong> Open Import Inventory, choose a CSV, and confirm the matched columns.</li>
+          <li><strong>Save local actions.</strong> Restock requests and removal flags stay in this browser; they are not submitted orders.</li>
+        </ol>
+      </section>
+    </div>
 
     <section class="summary-grid" aria-label="Inventory summary">
       <article class="summary-card metric-skus is-active" role="button" tabindex="0" data-status-filter="all" aria-controls="inventory-table" aria-pressed="true">
