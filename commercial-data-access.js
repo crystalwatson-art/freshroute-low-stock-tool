@@ -10,6 +10,8 @@ const FreshRouteDataAccess = ((units) => {
   const PERMISSIONS = Object.freeze({
     INVENTORY_READ: "inventory.read",
     RECEIVING_CREATE: "receiving.create",
+    INVENTORY_TRANSFER: "inventory.transfer",
+    WAREHOUSE_MANAGE: "warehouse.manage",
     ADJUSTMENT_APPROVE: "adjustment.approve",
     CORRECTION_CREATE: "correction.create",
     MEMBERS_MANAGE: "members.manage"
@@ -18,11 +20,13 @@ const FreshRouteDataAccess = ((units) => {
   const ROLE_PERMISSIONS = Object.freeze({
     [ROLES.WORKER]: Object.freeze([
       PERMISSIONS.INVENTORY_READ,
-      PERMISSIONS.RECEIVING_CREATE
+      PERMISSIONS.RECEIVING_CREATE,
+      PERMISSIONS.INVENTORY_TRANSFER
     ]),
     [ROLES.SUPERVISOR]: Object.freeze([
       PERMISSIONS.INVENTORY_READ,
       PERMISSIONS.RECEIVING_CREATE,
+      PERMISSIONS.INVENTORY_TRANSFER,
       PERMISSIONS.ADJUSTMENT_APPROVE,
       PERMISSIONS.CORRECTION_CREATE
     ]),
@@ -33,6 +37,14 @@ const FreshRouteDataAccess = ((units) => {
     "listProducts",
     "getInventoryBalances",
     "listMovements",
+    "listWarehouses",
+    "listLocations",
+    "listPallets",
+    "getLocationBalances",
+    "createWarehouse",
+    "createLocation",
+    "registerPallet",
+    "transferInventory",
     "approveAdjustment",
     "createCorrection"
   ]);
@@ -74,6 +86,14 @@ const FreshRouteDataAccess = ((units) => {
       listProducts: (context) => adapter.listProducts(context),
       getInventoryBalances: (context) => adapter.getInventoryBalances(context),
       listMovements: (context) => adapter.listMovements(context),
+      listWarehouses: (context) => adapter.listWarehouses(context),
+      listLocations: (context, query) => adapter.listLocations(context, query),
+      listPallets: (context, query) => adapter.listPallets(context, query),
+      getLocationBalances: (context, query) => adapter.getLocationBalances(context, query),
+      createWarehouse: (context, command) => adapter.createWarehouse(context, command),
+      createLocation: (context, command) => adapter.createLocation(context, command),
+      registerPallet: (context, command) => adapter.registerPallet(context, command),
+      transferInventory: (context, command) => adapter.transferInventory(context, command),
       approveAdjustment: (context, command) => adapter.approveAdjustment(context, command),
       createCorrection: (context, command) => adapter.createCorrection(context, command)
     });
@@ -84,6 +104,9 @@ const FreshRouteDataAccess = ((units) => {
       businesses: clone(seed.businesses || []),
       memberships: clone(seed.memberships || []),
       products: clone(seed.products || []),
+      warehouses: clone(seed.warehouses || []),
+      locations: clone(seed.locations || []),
+      pallets: clone(seed.pallets || []),
       transactions: clone(seed.transactions || []),
       movements: clone(seed.movements || [])
     };
@@ -208,7 +231,14 @@ const FreshRouteDataAccess = ((units) => {
           throw new RepositoryError("INVALID_QUANTITY", "Inventory movement quantity cannot be zero.");
         }
 
-        return { product, measurement: converted.measurement };
+        return {
+          product,
+          measurement: converted.measurement,
+          lotId: line.lotId || null,
+          warehouseId: line.warehouseId || null,
+          locationId: line.locationId || null,
+          palletId: line.palletId || null
+        };
       });
     }
 
@@ -226,7 +256,9 @@ const FreshRouteDataAccess = ((units) => {
         occurredAt,
         ...extra
       };
-      const movements = preparedLines.map(({ product, measurement }, index) => ({
+      const movements = preparedLines.map(({
+        product, measurement, lotId, warehouseId, locationId, palletId
+      }, index) => ({
         id: nextId("movement"),
         businessId: actor.businessId,
         transactionId,
@@ -239,12 +271,34 @@ const FreshRouteDataAccess = ((units) => {
         normalizedUnit: measurement.normalizedUnit,
         conversionFactor: measurement.factorToBase,
         conversionSource: measurement.conversionSource,
+        lotId,
+        warehouseId,
+        locationId,
+        palletId,
         occurredAt
       }));
 
       state.transactions.push(transaction);
       state.movements.push(...movements);
       return { transaction: clone(transaction), movements: clone(movements) };
+    }
+
+    function sameDimension(left, right) {
+      return (left || null) === (right || null);
+    }
+
+    function locationBalance({ businessId, warehouseId, locationId, productId, lotId, palletId }) {
+      return state.movements.reduce((quantity, movement) => {
+        if (
+          movement.businessId !== businessId ||
+          movement.warehouseId !== warehouseId ||
+          movement.locationId !== locationId ||
+          movement.productId !== productId ||
+          !sameDimension(movement.lotId, lotId) ||
+          !sameDimension(movement.palletId, palletId)
+        ) return quantity;
+        return addDecimal(quantity, movement.normalizedQuantity);
+      }, "0");
     }
 
     return {
@@ -269,6 +323,284 @@ const FreshRouteDataAccess = ((units) => {
       listMovements(context) {
         const actor = authorize(context, PERMISSIONS.INVENTORY_READ);
         return clone(state.movements.filter((movement) => movement.businessId === actor.businessId));
+      },
+
+      listWarehouses(context) {
+        const actor = authorize(context, PERMISSIONS.INVENTORY_READ);
+        return clone(state.warehouses.filter((warehouse) => warehouse.businessId === actor.businessId));
+      },
+
+      listLocations(context, query = {}) {
+        const actor = authorize(context, PERMISSIONS.INVENTORY_READ);
+        return clone(state.locations.filter((location) =>
+          location.businessId === actor.businessId &&
+          (!query.warehouseId || location.warehouseId === query.warehouseId)
+        ));
+      },
+
+      listPallets(context, query = {}) {
+        const actor = authorize(context, PERMISSIONS.INVENTORY_READ);
+        return clone(state.pallets.filter((pallet) =>
+          pallet.businessId === actor.businessId &&
+          (!query.warehouseId || pallet.warehouseId === query.warehouseId)
+        ));
+      },
+
+      getLocationBalances(context, query = {}) {
+        const actor = authorize(context, PERMISSIONS.INVENTORY_READ);
+        const balances = new Map();
+        state.movements.forEach((movement) => {
+          if (
+            movement.businessId !== actor.businessId ||
+            !movement.warehouseId || !movement.locationId ||
+            (query.warehouseId && movement.warehouseId !== query.warehouseId)
+          ) return;
+          const key = [
+            movement.warehouseId, movement.locationId, movement.productId,
+            movement.lotId || "", movement.palletId || "", movement.normalizedUnit
+          ].join("|");
+          const current = balances.get(key) || {
+            businessId: actor.businessId,
+            warehouseId: movement.warehouseId,
+            locationId: movement.locationId,
+            productId: movement.productId,
+            lotId: movement.lotId || null,
+            palletId: movement.palletId || null,
+            unit: movement.normalizedUnit,
+            quantity: "0"
+          };
+          current.quantity = addDecimal(current.quantity, movement.normalizedQuantity);
+          balances.set(key, current);
+        });
+        return clone([...balances.values()].filter((balance) => balance.quantity !== "0"));
+      },
+
+      createWarehouse(context, command = {}) {
+        const actor = authorize(context, PERMISSIONS.WAREHOUSE_MANAGE);
+        const code = requireText(command.code, "Warehouse code");
+        const name = requireText(command.name, "Warehouse name");
+        if (state.warehouses.some((warehouse) =>
+          warehouse.businessId === actor.businessId && warehouse.code.toLowerCase() === code.toLowerCase()
+        )) {
+          throw new RepositoryError("DUPLICATE_WAREHOUSE", "Warehouse codes must be unique within a business.");
+        }
+        const warehouse = {
+          id: nextId("warehouse"),
+          businessId: actor.businessId,
+          code,
+          name,
+          active: true,
+          createdBy: actor.userId
+        };
+        state.warehouses.push(warehouse);
+        return clone(warehouse);
+      },
+
+      createLocation(context, command = {}) {
+        const actor = authorize(context, PERMISSIONS.WAREHOUSE_MANAGE);
+        const warehouseId = requireText(command.warehouseId, "Warehouse ID");
+        const warehouse = state.warehouses.find((item) =>
+          item.id === warehouseId && item.businessId === actor.businessId && item.active !== false
+        );
+        if (!warehouse) throw new RepositoryError("WAREHOUSE_NOT_FOUND", "The warehouse does not belong to the active business.");
+        const code = requireText(command.code, "Location code");
+        const name = requireText(command.name, "Location name");
+        const kinds = ["area", "zone", "aisle", "rack", "shelf", "bin"];
+        const purposes = ["receiving", "staging", "storage", "quarantine", "shipping"];
+        if (!kinds.includes(command.kind) || !purposes.includes(command.purpose)) {
+          throw new RepositoryError("INVALID_LOCATION", "Location kind and purpose must use supported values.");
+        }
+        if (state.locations.some((location) =>
+          location.businessId === actor.businessId && location.warehouseId === warehouseId &&
+          String(location.code).toLowerCase() === code.toLowerCase()
+        )) {
+          throw new RepositoryError("DUPLICATE_LOCATION", "Location codes must be unique within a warehouse.");
+        }
+        const parentLocationId = command.parentLocationId || null;
+        if (!parentLocationId && command.kind !== "area") {
+          throw new RepositoryError("INVALID_LOCATION", "A top-level location must be an area.");
+        }
+        if (parentLocationId) {
+          const parent = state.locations.find((location) =>
+            location.id === parentLocationId && location.businessId === actor.businessId &&
+            location.warehouseId === warehouseId
+          );
+          if (!parent || parent.purpose !== command.purpose || kinds.indexOf(parent.kind) >= kinds.indexOf(command.kind)) {
+            throw new RepositoryError("INVALID_LOCATION", "The parent does not form a valid warehouse hierarchy.");
+          }
+        }
+        const location = {
+          id: nextId("location"),
+          businessId: actor.businessId,
+          warehouseId,
+          parentLocationId,
+          code,
+          name,
+          kind: command.kind,
+          purpose: command.purpose,
+          acceptsInventory: command.acceptsInventory === true,
+          active: true,
+          createdBy: actor.userId
+        };
+        state.locations.push(location);
+        return clone(location);
+      },
+
+      registerPallet(context, command = {}) {
+        const actor = authorize(context, PERMISSIONS.RECEIVING_CREATE);
+        const warehouseId = requireText(command.warehouseId, "Warehouse ID");
+        if (!state.warehouses.some((warehouse) =>
+          warehouse.id === warehouseId && warehouse.businessId === actor.businessId && warehouse.active !== false
+        )) {
+          throw new RepositoryError("WAREHOUSE_NOT_FOUND", "The warehouse does not belong to the active business.");
+        }
+        const lpn = requireText(command.lpn, "Pallet LPN");
+        if (state.pallets.some((pallet) =>
+          pallet.businessId === actor.businessId && pallet.lpn.toLowerCase() === lpn.toLowerCase()
+        )) {
+          throw new RepositoryError("DUPLICATE_PALLET", "Pallet LPNs must be unique within a business.");
+        }
+        const pallet = {
+          id: nextId("pallet"),
+          businessId: actor.businessId,
+          warehouseId,
+          lpn,
+          status: "active",
+          createdBy: actor.userId
+        };
+        state.pallets.push(pallet);
+        return clone(pallet);
+      },
+
+      transferInventory(context, command = {}) {
+        const actor = authorize(context, PERMISSIONS.INVENTORY_TRANSFER);
+        const idempotencyKey = validateIdempotency(actor.businessId, command.idempotencyKey);
+        const warehouseId = requireText(command.warehouseId, "Warehouse ID");
+        const sourceLocationId = requireText(command.sourceLocationId, "Source location ID");
+        const destinationLocationId = requireText(command.destinationLocationId, "Destination location ID");
+        const type = command.type === "putaway" ? "putaway" : command.type === "relocation" ? "relocation" : null;
+        if (!type) throw new RepositoryError("INVALID_TRANSFER", "Transfer type must be putaway or relocation.");
+        if (sourceLocationId === destinationLocationId) {
+          throw new RepositoryError("INVALID_TRANSFER", "Source and destination locations must be different.");
+        }
+
+        const warehouse = state.warehouses.find((item) =>
+          item.id === warehouseId && item.businessId === actor.businessId && item.active !== false
+        );
+        if (!warehouse) {
+          throw new RepositoryError("WAREHOUSE_NOT_FOUND", "The warehouse does not belong to the active business.");
+        }
+        const findLocation = (locationId) => state.locations.find((item) =>
+          item.id === locationId && item.businessId === actor.businessId &&
+          item.warehouseId === warehouseId && item.active !== false && item.acceptsInventory === true
+        );
+        const source = findLocation(sourceLocationId);
+        const destination = findLocation(destinationLocationId);
+        if (!source) throw new RepositoryError("INVALID_SOURCE", "The source location is invalid or cannot hold inventory.");
+        if (!destination) throw new RepositoryError("INVALID_DESTINATION", "The destination location is invalid or cannot hold inventory.");
+        if (type === "putaway" && (
+          !["receiving", "staging"].includes(source.purpose) ||
+          !["staging", "storage", "quarantine"].includes(destination.purpose)
+        )) {
+          throw new RepositoryError("INVALID_DESTINATION", "Put-away must follow the receiving workflow.");
+        }
+
+        const palletId = command.palletId || null;
+        if (palletId && !state.pallets.some((pallet) =>
+          pallet.id === palletId && pallet.businessId === actor.businessId &&
+          pallet.warehouseId === warehouseId && pallet.status === "active"
+        )) {
+          throw new RepositoryError("INVALID_PALLET", "The pallet is inactive or belongs to another warehouse.");
+        }
+
+        const prepared = prepareLines(actor, command.lines).map((line) => ({
+          ...line,
+          warehouseId,
+          locationId: sourceLocationId,
+          palletId
+        }));
+        const requested = new Map();
+        prepared.forEach((line) => {
+          const key = `${line.product.id}|${line.lotId || ""}`;
+          requested.set(key, addDecimal(requested.get(key) || "0", line.measurement.normalizedQuantity));
+        });
+        prepared.forEach((line) => {
+          const key = `${line.product.id}|${line.lotId || ""}`;
+          if (!requested.has(key)) return;
+          const available = locationBalance({
+            businessId: actor.businessId,
+            warehouseId,
+            locationId: sourceLocationId,
+            productId: line.product.id,
+            lotId: line.lotId,
+            palletId
+          });
+          if (parseStoredDecimal(addDecimal(available, `-${requested.get(key)}`)).digits < 0n) {
+            throw new RepositoryError("INSUFFICIENT_INVENTORY", "The source location does not have enough inventory.");
+          }
+          requested.delete(key);
+        });
+
+        const transactionId = nextId("transaction");
+        const transferId = nextId("transfer");
+        const occurredAt = command.occurredAt || new Date().toISOString();
+        const transaction = {
+          id: transactionId,
+          transferId,
+          businessId: actor.businessId,
+          warehouseId,
+          sourceLocationId,
+          destinationLocationId,
+          palletId,
+          idempotencyKey,
+          type: "inventory_transfer",
+          transferType: type,
+          note: String(command.note || "").trim(),
+          actorUserId: actor.userId,
+          actorRole: actor.role,
+          occurredAt
+        };
+        const movements = prepared.flatMap((line, index) => {
+          const common = {
+            businessId: actor.businessId,
+            transactionId,
+            transferId,
+            transferLineId: `${transferId}-line-${index + 1}`,
+            lineNumber: index + 1,
+            productId: line.product.id,
+            sku: line.product.sku,
+            lotId: line.lotId,
+            palletId,
+            originalUnit: line.measurement.originalUnit,
+            normalizedUnit: line.measurement.normalizedUnit,
+            conversionFactor: line.measurement.factorToBase,
+            conversionSource: line.measurement.conversionSource,
+            warehouseId,
+            occurredAt
+          };
+          return [
+            {
+              ...common,
+              id: nextId("movement"),
+              movementRole: "transfer_source",
+              locationId: sourceLocationId,
+              originalQuantity: `-${line.measurement.originalQuantity}`,
+              normalizedQuantity: `-${line.measurement.normalizedQuantity}`
+            },
+            {
+              ...common,
+              id: nextId("movement"),
+              movementRole: "transfer_destination",
+              locationId: destinationLocationId,
+              originalQuantity: line.measurement.originalQuantity,
+              normalizedQuantity: line.measurement.normalizedQuantity
+            }
+          ];
+        });
+
+        state.transactions.push(transaction);
+        state.movements.push(...movements);
+        return { transaction: clone(transaction), movements: clone(movements) };
       },
 
       approveAdjustment(context, command = {}) {
@@ -334,6 +666,14 @@ const FreshRouteDataAccess = ((units) => {
       listProducts: readInventory,
       getInventoryBalances: readInventory,
       listMovements: () => [],
+      listWarehouses: () => [],
+      listLocations: () => [],
+      listPallets: () => [],
+      getLocationBalances: () => [],
+      createWarehouse: readOnly,
+      createLocation: readOnly,
+      registerPallet: readOnly,
+      transferInventory: readOnly,
       approveAdjustment: readOnly,
       createCorrection: readOnly
     };

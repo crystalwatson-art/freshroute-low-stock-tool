@@ -14,6 +14,10 @@ const access = readFileSync(
   join(ROOT, "database/migrations/002_access_control_and_approval.sql"),
   "utf8"
 );
+const warehouse = readFileSync(
+  join(ROOT, "database/migrations/003_warehouse_locations_and_transfers.sql"),
+  "utf8"
+);
 
 const TENANT_TABLES = [
   "businesses",
@@ -80,4 +84,52 @@ test("photo records are private metadata and not public image data", () => {
   assert.match(schema, /object_key text not null/);
   assert.doesNotMatch(schema, /public_url/i);
   assert.doesNotMatch(access, /damage_photos.*to anon/is);
+});
+
+test("warehouse, hierarchical location, and pallet records are tenant-owned", () => {
+  ["warehouses", "warehouse_locations", "pallets", "inventory_transfers", "inventory_transfer_lines"]
+    .forEach((table) => {
+      assert.match(warehouse, new RegExp(`alter table ${table} enable row level security;`));
+    });
+  assert.match(warehouse, /warehouses_business_code_case_insensitive_unique/);
+  assert.match(warehouse, /warehouse_locations_business_id_warehouse_id_parent_location_id_fkey|foreign key \(business_id, warehouse_id, parent_location_id\)/);
+  assert.match(warehouse, /pallets_business_lpn_case_insensitive_unique/);
+  assert.match(warehouse, /warehouse_scope_is_immutable/);
+  assert.match(warehouse, /warehouse_location_scope_is_immutable/);
+  assert.match(warehouse, /foreign key \(business_id, product_id, lot_id\)/);
+});
+
+test("internal transfers are paired, idempotent, serialized, and immutable", () => {
+  assert.match(warehouse, /create function execute_inventory_transfer/);
+  assert.match(warehouse, /pg_advisory_xact_lock/);
+  assert.match(warehouse, /unique \(business_id, idempotency_key\)/);
+  assert.match(warehouse, /'transfer_source'/);
+  assert.match(warehouse, /'transfer_destination'/);
+  assert.match(warehouse, /inventory_transfers_are_immutable/);
+  assert.match(warehouse, /inventory_transfer_lines_are_immutable/);
+});
+
+test("all correction decreases use product-wide and exact source locks", () => {
+  assert.match(
+    warehouse,
+    /inventory_stock_lock_key\(\s*adjustment\.business_id, null, null, stock\.product_id, null, null\s*\)/
+  );
+  assert.match(warehouse, /having bool_or\(line\.original_quantity < 0\)/);
+  assert.match(warehouse, /A correction cannot make inventory negative at its warehouse location/);
+});
+
+test("warehouse metadata cannot change during located stock operations", () => {
+  assert.match(warehouse, /create function app_private\.warehouse_metadata_lock_key/);
+  assert.match(warehouse, /pg_advisory_xact_lock_shared/);
+  assert.match(warehouse, /warehouse_metadata_updates_are_serialized/);
+  assert.match(warehouse, /location_metadata_updates_are_serialized/);
+  assert.match(warehouse, /pallet_metadata_updates_are_serialized/);
+});
+
+test("location balances preserve product, lot, pallet, and warehouse dimensions", () => {
+  assert.match(warehouse, /create view inventory_location_balances/);
+  assert.match(warehouse, /movement\.warehouse_id/);
+  assert.match(warehouse, /movement\.location_id/);
+  assert.match(warehouse, /movement\.lot_id/);
+  assert.match(warehouse, /movement\.pallet_id/);
 });
