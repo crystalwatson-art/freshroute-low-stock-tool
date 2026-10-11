@@ -32,6 +32,10 @@
     </header>
 
     <nav class="dashboard-navigation" aria-label="Dashboard tools">
+      <button class="nav-tool-button" id="receiving-button" type="button" aria-expanded="false" aria-controls="receiving-panel" data-tool-panel="receiving-panel">
+        <span aria-hidden="true">▤</span>
+        Receive Delivery
+      </button>
       <button class="nav-tool-button" id="import-inventory-button" type="button" aria-expanded="false" aria-controls="import-inventory-panel" data-tool-panel="import-inventory-panel">
         <span aria-hidden="true">⇧</span>
         Import Inventory
@@ -47,6 +51,154 @@
     </nav>
 
     <div class="tool-panels">
+      <section id="receiving-panel" class="tool-panel receiving-panel" aria-labelledby="receiving-title" hidden>
+        <div class="receiving-heading">
+          <div class="tool-panel-heading">
+            <div class="data-source-title-row">
+              <p class="eyebrow">FreshRoute Pro prototype</p>
+              <span class="mode-badge customer-mode">Local browser data</span>
+            </div>
+            <h2 id="receiving-title">Delivery Receiving</h2>
+            <p>Count a delivery, record damage once, and prepare a supervisor-ready summary.</p>
+          </div>
+        </div>
+
+        <form id="receiving-form" novalidate>
+          <fieldset class="receiving-section">
+            <legend>Delivery details</legend>
+            <div class="receiving-field-grid delivery-fields">
+              <div class="receiving-field">
+                <label for="delivery-date">Delivery date <span aria-hidden="true">*</span></label>
+                <input id="delivery-date" name="deliveryDate" type="date" required>
+              </div>
+              <div class="receiving-field">
+                <label for="delivery-supplier">Supplier <span aria-hidden="true">*</span></label>
+                <input id="delivery-supplier" name="supplier" type="text" maxlength="120" autocomplete="organization" required>
+              </div>
+              <div class="receiving-field receiving-notes-field">
+                <label for="inspection-notes">Inspection notes</label>
+                <textarea id="inspection-notes" name="notes" rows="3" maxlength="2000" placeholder="Temperature, packaging condition, seal checks, or follow-up needed"></textarea>
+              </div>
+              <div class="receiving-field receiving-photo-field">
+                <label for="damage-photo">Damage photo (optional)</label>
+                <input id="damage-photo" name="damagePhoto" class="file-input" type="file" accept="image/*">
+                <small>Previewed locally for this draft; the image is not retained after reload.</small>
+              </div>
+            </div>
+            <div id="damage-photo-preview" class="damage-photo-preview" hidden>
+              <img id="damage-photo-image" alt="Selected damage evidence preview">
+              <div>
+                <strong id="damage-photo-name"></strong>
+                <small>Attached to this supervisor review only.</small>
+              </div>
+              <button id="remove-damage-photo" class="text-button" type="button">Remove photo</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="receiving-section">
+            <legend>Product count</legend>
+            <div class="receiving-field-grid count-fields">
+              <div class="receiving-field">
+                <label for="receiving-sku">Product / SKU <span aria-hidden="true">*</span></label>
+                <input id="receiving-sku" name="sku" type="text" maxlength="80" autocomplete="off" required>
+              </div>
+              <div class="receiving-field">
+                <label for="receiving-product-name">Product name <span aria-hidden="true">*</span></label>
+                <input id="receiving-product-name" name="productName" type="text" maxlength="120" autocomplete="off" required>
+              </div>
+              <div class="receiving-field">
+                <label for="boxes-per-row">Boxes per row <span aria-hidden="true">*</span></label>
+                <input id="boxes-per-row" name="boxesPerRow" type="number" min="1" step="1" inputmode="numeric" required>
+              </div>
+              <div class="receiving-field">
+                <label for="receiving-layers">Number of layers <span aria-hidden="true">*</span></label>
+                <input id="receiving-layers" name="layers" type="number" min="1" step="1" inputmode="numeric" required>
+              </div>
+              <div class="receiving-field">
+                <label for="units-per-box">Units per box <span aria-hidden="true">*</span></label>
+                <input id="units-per-box" name="unitsPerBox" type="number" min="1" step="1" inputmode="numeric" required>
+              </div>
+              <div class="receiving-field">
+                <label for="damaged-boxes">Damaged boxes</label>
+                <input id="damaged-boxes" name="damagedBoxes" type="number" min="0" step="1" inputmode="numeric" value="0">
+              </div>
+              <div class="receiving-field">
+                <label for="damaged-units">Damaged individual units</label>
+                <input id="damaged-units" name="damagedUnits" type="number" min="0" step="1" inputmode="numeric" value="0">
+              </div>
+            </div>
+
+            <div id="receiving-calculation" class="receiving-calculation" aria-live="polite">
+              <span><small>Total boxes</small><strong id="preview-total-boxes">—</strong></span>
+              <span><small>Total units</small><strong id="preview-total-units">—</strong></span>
+              <span><small>Damaged units</small><strong id="preview-damaged-units">—</strong></span>
+              <span><small>Usable units</small><strong id="preview-usable-units">—</strong></span>
+            </div>
+
+            <button class="primary-button" type="submit">Add item to delivery</button>
+          </fieldset>
+        </form>
+
+        <div id="receiving-feedback" class="upload-feedback" role="status" aria-live="polite" hidden></div>
+
+        <section class="receiving-review" aria-labelledby="receiving-review-title">
+          <div class="receiving-review-heading">
+            <div>
+              <p class="eyebrow">Supervisor review</p>
+              <h3 id="receiving-review-title">Receiving summary</h3>
+            </div>
+            <div class="receiving-review-actions">
+              <button id="clear-receiving-draft" class="text-button" type="button" disabled>Clear draft</button>
+              <button id="save-receiving-record" class="primary-button" type="button" disabled>Save record locally</button>
+            </div>
+          </div>
+
+          <dl class="receiving-meta">
+            <div><dt>Delivery date</dt><dd id="review-delivery-date">Not entered</dd></div>
+            <div><dt>Supplier</dt><dd id="review-supplier">Not entered</dd></div>
+            <div><dt>Damage photo</dt><dd id="review-photo">None attached</dd></div>
+            <div class="review-notes"><dt>Inspection notes</dt><dd id="review-notes">No notes entered</dd></div>
+          </dl>
+
+          <p id="receiving-empty-message" class="receiving-empty-message">Add a product count to build the receiving summary.</p>
+          <div id="receiving-table-wrapper" class="table-wrapper" hidden>
+            <table class="receiving-table">
+              <caption class="visually-hidden">Products counted in the current delivery</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Product</th>
+                  <th scope="col">Box calculation</th>
+                  <th scope="col">Total units</th>
+                  <th scope="col">Damage recorded</th>
+                  <th scope="col">Usable units</th>
+                  <th scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody id="receiving-table-body"></tbody>
+            </table>
+          </div>
+
+          <div class="receiving-summary-grid">
+            <span><small>Line items</small><strong id="summary-line-items">0</strong></span>
+            <span><small>Total boxes</small><strong id="summary-total-boxes">0</strong></span>
+            <span><small>Received units</small><strong id="summary-total-units">0</strong></span>
+            <span><small>Damaged boxes</small><strong id="summary-damaged-boxes">0</strong></span>
+            <span><small>Damaged individual units</small><strong id="summary-damaged-units">0</strong></span>
+            <span><small>Usable units</small><strong id="summary-usable-units">0</strong></span>
+          </div>
+          <p class="receiving-formula-note">Usable units = total units − units inside damaged boxes − damaged individual units.</p>
+        </section>
+
+        <section class="saved-receiving" aria-labelledby="saved-receiving-title">
+          <div class="saved-receiving-heading">
+            <h3 id="saved-receiving-title">Saved receiving records</h3>
+            <span id="saved-receiving-count">0 saved locally</span>
+          </div>
+          <p>Records stay only in this browser. They are not sent to suppliers or a server.</p>
+          <ul id="saved-receiving-list"></ul>
+        </section>
+      </section>
+
       <section id="import-inventory-panel" class="tool-panel data-source-panel" aria-labelledby="data-source-title" hidden>
         <div class="data-source-copy">
           <div class="data-source-title-row">
@@ -251,6 +403,7 @@
   <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top" hidden>↑</button>
 
   <script src="inventory-core.js"></script>
+  <script src="receiving-core.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

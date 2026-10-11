@@ -9,6 +9,9 @@ const THEME_STORAGE_KEY = "freshroute-theme";
 const BACK_TO_TOP_THRESHOLD = 350;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_UPLOAD_ROWS = 50000;
+const RECEIVING_STORAGE_KEY = "freshroute-receiving-records";
+const MAX_DAMAGE_PHOTO_BYTES = 5 * 1024 * 1024;
+const MAX_SAVED_RECEIVING_RECORDS = 25;
 
 const {
   FIELD_DEFINITIONS,
@@ -23,6 +26,12 @@ const {
   getLocalTodayISO
 } = FreshRouteCore;
 
+const {
+  calculateReceivingItem,
+  summarizeReceiving,
+  validateDeliveryDetails
+} = FreshRouteReceiving;
+
 let inventoryData = [];
 let filteredInventoryData = [];
 let currentPage = 1;
@@ -33,6 +42,9 @@ let customerFileName = "";
 let pendingUpload = null;
 let sentRequests = loadSentRequests();
 let removalFlags = loadRemovalFlags();
+let receivingItems = [];
+let damagePhoto = null;
+let receivingRecords = loadReceivingRecords();
 
 const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
@@ -54,6 +66,10 @@ const summaryCards = [...document.querySelectorAll(".summary-card[data-status-fi
 const toolNavigation = document.querySelector(".dashboard-navigation");
 const toolButtons = [...document.querySelectorAll(".nav-tool-button[data-tool-panel]")];
 const toolPanels = [...document.querySelectorAll(".tool-panel")];
+const receivingForm = document.getElementById("receiving-form");
+const receivingTableBody = document.getElementById("receiving-table-body");
+const receivingFeedback = document.getElementById("receiving-feedback");
+const damagePhotoInput = document.getElementById("damage-photo");
 
 document.addEventListener("DOMContentLoaded", () => {
   applySavedTheme();
@@ -64,6 +80,13 @@ document.addEventListener("DOMContentLoaded", () => {
   toolNavigation.addEventListener("click", handleToolNavigationClick);
   toolNavigation.addEventListener("keydown", handleToolNavigationKeydown);
   toolPanels.forEach((panel) => panel.addEventListener("keydown", handleToolPanelKeydown));
+  receivingForm.addEventListener("input", handleReceivingInput);
+  receivingForm.addEventListener("submit", addReceivingItem);
+  receivingTableBody.addEventListener("click", removeReceivingItem);
+  damagePhotoInput.addEventListener("change", handleDamagePhoto);
+  document.getElementById("remove-damage-photo").addEventListener("click", clearDamagePhoto);
+  document.getElementById("save-receiving-record").addEventListener("click", saveReceivingRecord);
+  document.getElementById("clear-receiving-draft").addEventListener("click", () => resetReceivingDraft());
   backToTopButton.addEventListener("click", scrollToTop);
   window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
   tableBody.addEventListener("click", handleTableAction);
@@ -80,6 +103,10 @@ document.addEventListener("DOMContentLoaded", () => {
     container.addEventListener("submit", handlePageJump);
   });
   updateBackToTopVisibility();
+  receivingForm.elements.deliveryDate.value = getLocalTodayISO();
+  renderReceivingReview();
+  renderSavedReceivingRecords();
+  updateReceivingCalculation();
   loadDemoData();
 });
 
@@ -143,6 +170,314 @@ function closeToolPanels() {
   toolPanels.forEach((panel) => {
     panel.hidden = true;
   });
+}
+
+function handleReceivingInput() {
+  updateReceivingCalculation();
+  renderReceivingReview();
+}
+
+function getReceivingItemInput() {
+  return {
+    sku: receivingForm.elements.sku.value,
+    productName: receivingForm.elements.productName.value,
+    boxesPerRow: receivingForm.elements.boxesPerRow.value,
+    layers: receivingForm.elements.layers.value,
+    unitsPerBox: receivingForm.elements.unitsPerBox.value,
+    damagedBoxes: receivingForm.elements.damagedBoxes.value,
+    damagedUnits: receivingForm.elements.damagedUnits.value
+  };
+}
+
+function getReceivingDeliveryDetails() {
+  return {
+    deliveryDate: receivingForm.elements.deliveryDate.value,
+    supplier: receivingForm.elements.supplier.value,
+    notes: receivingForm.elements.notes.value
+  };
+}
+
+function updateReceivingCalculation() {
+  const input = getReceivingItemInput();
+  const preview = calculateReceivingItem({
+    ...input,
+    sku: input.sku || "Preview",
+    productName: input.productName || "Preview"
+  });
+  const values = preview.valid ? {
+    "preview-total-boxes": preview.item.totalBoxes,
+    "preview-total-units": preview.item.totalUnits,
+    "preview-damaged-units": preview.item.totalDamagedUnits,
+    "preview-usable-units": preview.item.usableUnits
+  } : {
+    "preview-total-boxes": "—",
+    "preview-total-units": "—",
+    "preview-damaged-units": "—",
+    "preview-usable-units": "—"
+  };
+
+  Object.entries(values).forEach(([id, value]) => {
+    document.getElementById(id).textContent =
+      typeof value === "number" ? value.toLocaleString() : value;
+  });
+}
+
+function addReceivingItem(event) {
+  event.preventDefault();
+  const result = calculateReceivingItem(getReceivingItemInput());
+
+  if (!result.valid) {
+    showReceivingFeedback("Fix this product count before adding it.", "error", result.errors);
+    return;
+  }
+
+  receivingItems.push({
+    ...result.item,
+    id: typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `receiving-${Date.now()}-${receivingItems.length}`
+  });
+  clearReceivingProductFields();
+  renderReceivingReview();
+  showReceivingFeedback(
+    `${result.item.productName} was added to the receiving summary.`,
+    "success"
+  );
+  receivingForm.elements.sku.focus();
+}
+
+function clearReceivingProductFields() {
+  ["sku", "productName", "boxesPerRow", "layers", "unitsPerBox"].forEach((name) => {
+    receivingForm.elements[name].value = "";
+  });
+  receivingForm.elements.damagedBoxes.value = "0";
+  receivingForm.elements.damagedUnits.value = "0";
+  updateReceivingCalculation();
+}
+
+function removeReceivingItem(event) {
+  const button = event.target.closest("[data-receiving-remove]");
+  if (!button) return;
+  receivingItems = receivingItems.filter((item) => item.id !== button.dataset.receivingRemove);
+  renderReceivingReview();
+  showReceivingFeedback("The product count was removed from this draft.", "success");
+}
+
+function renderReceivingReview() {
+  const details = getReceivingDeliveryDetails();
+  document.getElementById("review-delivery-date").textContent =
+    details.deliveryDate || "Not entered";
+  document.getElementById("review-supplier").textContent =
+    details.supplier.trim() || "Not entered";
+  document.getElementById("review-notes").textContent =
+    details.notes.trim() || "No notes entered";
+  document.getElementById("review-photo").textContent =
+    damagePhoto?.name || "None attached";
+
+  const summary = summarizeReceiving(receivingItems);
+  const totals = {
+    "summary-line-items": summary.lineItems,
+    "summary-total-boxes": summary.totalBoxes,
+    "summary-total-units": summary.totalUnits,
+    "summary-damaged-boxes": summary.damagedBoxes,
+    "summary-damaged-units": summary.damagedIndividualUnits,
+    "summary-usable-units": summary.usableUnits
+  };
+  Object.entries(totals).forEach(([id, value]) => {
+    document.getElementById(id).textContent = value.toLocaleString();
+  });
+
+  const hasItems = receivingItems.length > 0;
+  document.getElementById("receiving-empty-message").hidden = hasItems;
+  document.getElementById("receiving-table-wrapper").hidden = !hasItems;
+  document.getElementById("save-receiving-record").disabled = !hasItems;
+  document.getElementById("clear-receiving-draft").disabled =
+    !hasItems && !details.supplier.trim() && !details.notes.trim() && !damagePhoto;
+
+  receivingTableBody.innerHTML = receivingItems.map((item) => `
+    <tr>
+      <td><strong class="product-name">${escapeHTML(item.productName)}</strong><small>SKU ${escapeHTML(item.sku)}</small></td>
+      <td>${item.boxesPerRow.toLocaleString()} × ${item.layers.toLocaleString()} = ${item.totalBoxes.toLocaleString()} boxes</td>
+      <td>${item.unitsPerBox.toLocaleString()} × ${item.totalBoxes.toLocaleString()} = ${item.totalUnits.toLocaleString()}</td>
+      <td>${item.damagedBoxes.toLocaleString()} boxes + ${item.damagedUnits.toLocaleString()} units<small>${item.totalDamagedUnits.toLocaleString()} total damaged units</small></td>
+      <td><strong class="usable-unit-count">${item.usableUnits.toLocaleString()}</strong></td>
+      <td><button class="text-button" type="button" data-receiving-remove="${escapeHTML(item.id)}" aria-label="Remove ${escapeHTML(item.productName)} from receiving summary">Remove</button></td>
+    </tr>
+  `).join("");
+}
+
+function handleDamagePhoto(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    clearDamagePhoto();
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    damagePhotoInput.value = "";
+    showReceivingFeedback("Choose an image file for the damage photo.", "error");
+    return;
+  }
+  if (file.size > MAX_DAMAGE_PHOTO_BYTES) {
+    damagePhotoInput.value = "";
+    showReceivingFeedback("The damage photo must be 5 MB or smaller.", "error");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    damagePhoto = {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl: reader.result
+    };
+    document.getElementById("damage-photo-image").src = damagePhoto.dataUrl;
+    document.getElementById("damage-photo-name").textContent = damagePhoto.name;
+    document.getElementById("damage-photo-preview").hidden = false;
+    renderReceivingReview();
+    showReceivingFeedback("Damage photo attached locally to this draft.", "success");
+  });
+  reader.addEventListener("error", () => {
+    damagePhotoInput.value = "";
+    showReceivingFeedback("FreshRoute could not preview this image.", "error");
+  });
+  reader.readAsDataURL(file);
+}
+
+function clearDamagePhoto() {
+  damagePhoto = null;
+  damagePhotoInput.value = "";
+  document.getElementById("damage-photo-image").removeAttribute("src");
+  document.getElementById("damage-photo-name").textContent = "";
+  document.getElementById("damage-photo-preview").hidden = true;
+  renderReceivingReview();
+}
+
+function saveReceivingRecord() {
+  const detailsResult = validateDeliveryDetails(getReceivingDeliveryDetails());
+  const errors = [...detailsResult.errors];
+  if (receivingItems.length === 0) errors.push("Add at least one product count.");
+
+  if (errors.length > 0) {
+    showReceivingFeedback("Complete the receiving record before saving it.", "error", errors);
+    return;
+  }
+
+  const totals = summarizeReceiving(receivingItems);
+  const record = {
+    id: typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `record-${Date.now()}`,
+    ...detailsResult.details,
+    photoName: damagePhoto?.name || "",
+    items: receivingItems.map(({ id, ...item }) => item),
+    totals,
+    savedAt: new Date().toISOString()
+  };
+  const nextRecords = [record, ...receivingRecords].slice(0, MAX_SAVED_RECEIVING_RECORDS);
+
+  try {
+    localStorage.setItem(RECEIVING_STORAGE_KEY, JSON.stringify(nextRecords));
+    receivingRecords = nextRecords;
+  } catch (error) {
+    console.warn("Receiving record could not be saved.", error);
+    showReceivingFeedback(
+      "This receiving record could not be saved in the browser. Copy the summary before leaving this page.",
+      "error"
+    );
+    return;
+  }
+
+  resetReceivingDraft({ keepFeedback: true });
+  renderSavedReceivingRecords();
+  showReceivingFeedback(
+    `Receiving record for ${record.supplier} was saved locally. Nothing was sent to the supplier.`,
+    "success"
+  );
+}
+
+function resetReceivingDraft({ keepFeedback = false } = {}) {
+  receivingItems = [];
+  damagePhoto = null;
+  receivingForm.reset();
+  receivingForm.elements.deliveryDate.value = getLocalTodayISO();
+  receivingForm.elements.damagedBoxes.value = "0";
+  receivingForm.elements.damagedUnits.value = "0";
+  document.getElementById("damage-photo-image").removeAttribute("src");
+  document.getElementById("damage-photo-name").textContent = "";
+  document.getElementById("damage-photo-preview").hidden = true;
+  if (!keepFeedback) {
+    receivingFeedback.hidden = true;
+    receivingFeedback.textContent = "";
+  }
+  updateReceivingCalculation();
+  renderReceivingReview();
+}
+
+function loadReceivingRecords() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECEIVING_STORAGE_KEY) || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((record) =>
+      record &&
+      typeof record.supplier === "string" &&
+      typeof record.deliveryDate === "string" &&
+      Array.isArray(record.items) &&
+      record.totals &&
+      Number.isFinite(record.totals.lineItems) &&
+      Number.isFinite(record.totals.usableUnits)
+    ).slice(0, MAX_SAVED_RECEIVING_RECORDS);
+  } catch (error) {
+    console.warn("Saved receiving records could not be read.", error);
+    return [];
+  }
+}
+
+function renderSavedReceivingRecords() {
+  const count = receivingRecords.length;
+  document.getElementById("saved-receiving-count").textContent =
+    `${count.toLocaleString()} saved locally`;
+  const list = document.getElementById("saved-receiving-list");
+
+  if (count === 0) {
+    list.innerHTML = '<li class="saved-receiving-empty">No receiving records saved yet.</li>';
+    return;
+  }
+
+  list.innerHTML = receivingRecords.slice(0, 5).map((record) => `
+    <li>
+      <div>
+        <strong>${escapeHTML(record.supplier)}</strong>
+        <span>${escapeHTML(record.deliveryDate)} · ${record.totals.lineItems.toLocaleString()} line item${record.totals.lineItems === 1 ? "" : "s"}</span>
+      </div>
+      <div>
+        <strong>${record.totals.usableUnits.toLocaleString()} usable units</strong>
+        <span>${record.photoName ? `Photo: ${escapeHTML(record.photoName)}` : "No damage photo"}</span>
+      </div>
+    </li>
+  `).join("");
+}
+
+function showReceivingFeedback(message, type, details = []) {
+  receivingFeedback.replaceChildren();
+  receivingFeedback.className =
+    `upload-feedback ${type === "error" ? "error-message" : "success-message"}`;
+  receivingFeedback.setAttribute("role", type === "error" ? "alert" : "status");
+
+  const summary = document.createElement("strong");
+  summary.textContent = message;
+  receivingFeedback.appendChild(summary);
+
+  if (details.length > 0) {
+    const list = document.createElement("ul");
+    details.forEach((detail) => {
+      const item = document.createElement("li");
+      item.textContent = detail;
+      list.appendChild(item);
+    });
+    receivingFeedback.appendChild(list);
+  }
+  receivingFeedback.hidden = false;
 }
 
 function updateBackToTopVisibility() {
