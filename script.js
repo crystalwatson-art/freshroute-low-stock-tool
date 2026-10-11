@@ -7,6 +7,7 @@ const CRITICAL_EXPIRY_DAYS = 3;
 const REQUESTS_STORAGE_KEY = "freshroute-restock-requests";
 const REMOVALS_STORAGE_KEY = "freshroute-removal-flags";
 const THEME_STORAGE_KEY = "freshroute-theme";
+const BACK_TO_TOP_THRESHOLD = 350;
 
 let inventoryData = [];
 let filteredInventoryData = [];
@@ -19,25 +20,45 @@ const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
 const refreshButton = document.getElementById("refresh-data");
 const themeToggle = document.getElementById("theme-toggle");
+const backToTopButton = document.getElementById("back-to-top");
 const tableBody = document.getElementById("inventory-table-body");
 const paginationContainers = [
   document.getElementById("pagination-top"),
   document.getElementById("pagination-bottom")
 ];
+const summaryCards = [...document.querySelectorAll(".summary-card[data-status-filter]")];
 
 document.addEventListener("DOMContentLoaded", () => {
   applySavedTheme();
-  statusFilter.addEventListener("change", applyFilters);
+  statusFilter.addEventListener("change", handleStatusFilterChange);
   productSearch.addEventListener("input", applyFilters);
   refreshButton.addEventListener("click", loadInventoryData);
   themeToggle.addEventListener("click", toggleTheme);
+  backToTopButton.addEventListener("click", scrollToTop);
+  window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
   tableBody.addEventListener("click", handleTableAction);
+  summaryCards.forEach((card) => {
+    card.addEventListener("click", activateSummaryCard);
+    card.addEventListener("keydown", handleSummaryCardKeydown);
+  });
   paginationContainers.forEach((container) => {
     container.addEventListener("click", handlePaginationClick);
     container.addEventListener("submit", handlePageJump);
   });
+  updateBackToTopVisibility();
   loadInventoryData();
 });
+
+function updateBackToTopVisibility() {
+  backToTopButton.hidden = window.scrollY < BACK_TO_TOP_THRESHOLD;
+}
+
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+  });
+}
 
 async function loadInventoryData() {
   const loadingMessage = document.getElementById("loading-message");
@@ -233,7 +254,7 @@ function isExpired(daysToExpiry) {
 
 function isExpiringSoon(daysToExpiry) {
   return daysToExpiry !== null &&
-    daysToExpiry >= 1 &&
+    daysToExpiry >= 0 &&
     daysToExpiry <= EXPIRY_WARNING_DAYS;
 }
 
@@ -259,14 +280,19 @@ function parseDate(value) {
 
 function updateDashboardSummary() {
   const needsRestock = inventoryData.filter((item) =>
-    ["low-stock", "reorder-soon"].includes(item.status)
+    matchesStatusFilter(item, "needs-restock")
   ).length;
   const expiringSoon = inventoryData.filter((item) =>
-    item.daysToExpiry === 0 || isExpiringSoon(item.daysToExpiry)
+    matchesStatusFilter(item, "expiring-soon")
   ).length;
-  const expired = inventoryData.filter((item) => item.status === "expired").length;
+  const expired = inventoryData.filter((item) =>
+    matchesStatusFilter(item, "expired")
+  ).length;
   const healthyStock = inventoryData.filter(
-    (item) => item.status === "healthy-stock"
+    (item) => matchesStatusFilter(item, "healthy-stock")
+  ).length;
+  const requestsSent = inventoryData.filter((item) =>
+    matchesStatusFilter(item, "requests-sent")
   ).length;
 
   document.getElementById("unique-sku-count").textContent = inventoryData.length;
@@ -274,9 +300,24 @@ function updateDashboardSummary() {
   document.getElementById("expiring-soon-count").textContent = expiringSoon;
   document.getElementById("expired-count").textContent = expired;
   document.getElementById("healthy-stock-count").textContent = healthyStock;
-  document.getElementById("requests-sent-count").textContent = sentRequests.size;
+  document.getElementById("requests-sent-count").textContent = requestsSent;
   document.getElementById("source-data-note").textContent =
     `${rawRecordCount.toLocaleString()} raw source records · ${inventoryData.length} latest unique SKUs`;
+  updateActiveInventoryProgress();
+}
+
+function updateActiveInventoryProgress() {
+  const totalSkuCount = inventoryData.length;
+  const flaggedCount = inventoryData.filter((item) =>
+    removalFlags.has(item.requestKey)
+  ).length;
+  const activeSkuCount = totalSkuCount - flaggedCount;
+  const progressBar = document.getElementById("active-inventory-bar");
+
+  document.getElementById("active-inventory-summary").textContent =
+    `${activeSkuCount} of ${totalSkuCount} active SKUs remaining · ${flaggedCount} flagged for removal`;
+  progressBar.max = Math.max(totalSkuCount, 1);
+  progressBar.value = activeSkuCount;
 }
 
 function renderCriticalAlert() {
@@ -330,8 +371,50 @@ function applyFilters() {
   renderInventoryTable();
 }
 
+function handleStatusFilterChange() {
+  updateActiveSummaryCard(statusFilter.value);
+  applyFilters();
+}
+
+function activateSummaryCard(event) {
+  const selectedCard = event.currentTarget;
+
+  statusFilter.value = selectedCard.dataset.statusFilter;
+  productSearch.value = "";
+  currentPage = 1;
+  updateActiveSummaryCard(statusFilter.value);
+  applyFilters();
+  document.getElementById("inventory-title").scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start"
+  });
+}
+
+function handleSummaryCardKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  event.preventDefault();
+  activateSummaryCard(event);
+}
+
+function updateActiveSummaryCard(selectedStatus) {
+  summaryCards.forEach((card) => {
+    const isActive = card.dataset.statusFilter === selectedStatus;
+    card.classList.toggle("is-active", isActive);
+    card.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
 function matchesStatusFilter(item, selectedStatus) {
   if (selectedStatus === "all") return true;
+  if (selectedStatus === "needs-restock") {
+    return ["low-stock", "reorder-soon"].includes(item.status);
+  }
+  if (selectedStatus === "requests-sent") {
+    return sentRequests.has(item.requestKey);
+  }
   if (selectedStatus === "expired") return isExpired(item.daysToExpiry);
   if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry);
   return item.status === selectedStatus;
@@ -429,6 +512,7 @@ function handleTableAction(event) {
     if (matchingItem?.status === "expired") {
       removalFlags.add(matchingItem.requestKey);
       saveRemovalFlags();
+      updateDashboardSummary();
       renderInventoryTable();
     }
     return;

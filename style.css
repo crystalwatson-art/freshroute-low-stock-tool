@@ -115,6 +115,33 @@ input:disabled {
   transform: translateY(0);
 }
 
+.back-to-top {
+  position: fixed;
+  z-index: 50;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  color: var(--blue-bright);
+  font-size: 1.35rem;
+  font-weight: 850;
+  line-height: 1;
+  background: linear-gradient(145deg, var(--panel-raised), var(--panel));
+  border: 1px solid var(--border-bright);
+  border-radius: 50%;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 0 18px var(--blue-glow);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.back-to-top:hover {
+  border-color: var(--blue-bright);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32), 0 0 22px var(--blue-glow);
+  transform: translateY(-2px);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -250,6 +277,26 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.summary-card[role="button"] {
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.summary-card[role="button"]:hover {
+  border-color: color-mix(in srgb, currentColor 55%, var(--border));
+  transform: translateY(-2px);
+}
+
+.summary-card[role="button"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.summary-card.is-active {
+  border-color: currentColor;
+  box-shadow: var(--shadow), 0 0 24px color-mix(in srgb, currentColor 20%, transparent);
+}
+
 .summary-card::after {
   position: absolute;
   right: -30px;
@@ -305,6 +352,68 @@ h1 {
   color: var(--text-muted);
   font-size: 0.7rem;
   line-height: 1.4;
+}
+
+.active-inventory-progress {
+  margin-bottom: 18px;
+  padding: 15px 18px;
+  background: linear-gradient(145deg, var(--panel-raised), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow: var(--shadow);
+}
+
+.active-inventory-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.active-inventory-heading p,
+.active-inventory-heading strong {
+  margin: 0;
+}
+
+.active-inventory-heading p {
+  color: var(--green);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.active-inventory-heading strong {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.active-inventory-progress progress {
+  display: block;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  appearance: none;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.active-inventory-progress progress::-webkit-progress-bar {
+  background: var(--panel-soft);
+}
+
+.active-inventory-progress progress::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--green), var(--blue-bright));
+  border-radius: 999px;
+  box-shadow: 0 0 14px var(--green-glow);
+}
+
+.active-inventory-progress progress::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--green), var(--blue-bright));
+  border-radius: 999px;
+  box-shadow: 0 0 14px var(--green-glow);
 }
 
 .critical-alert {
@@ -753,7 +862,7 @@ td small {
 @media (max-width: 800px) {
   .dashboard-shell {
     width: min(100% - 24px, 1500px);
-    padding-top: 20px;
+    padding: 20px 0 84px;
   }
 
   .page-header,
@@ -805,6 +914,11 @@ td small {
 }
 
 @media (max-width: 520px) {
+  .back-to-top {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
   .brand-mark {
     width: 48px;
     height: 48px;
@@ -817,6 +931,12 @@ td small {
 
   .summary-card {
     min-height: 120px;
+  }
+
+  .active-inventory-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
   }
 
   .inventory-panel {
