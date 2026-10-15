@@ -102,6 +102,11 @@ function startStaticServer() {
   const server = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, "http://localhost").pathname;
+      if (pathname === "/api/config") {
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ commercialConfigured: false }));
+        return;
+      }
       const relative = pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1));
       const filePath = normalize(join(ROOT, relative));
       if (!filePath.startsWith(`${ROOT}/`)) throw new Error("Invalid path");

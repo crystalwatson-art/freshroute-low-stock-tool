@@ -150,3 +150,18 @@ test("new-product review preserves unknown deliveries and uses an authenticated 
   assert.match(newProduct, /low_stock_threshold/);
   assert.match(newProduct, /accepted_quantity/);
 });
+
+test("authenticated commercial migration has server-only receiving and invitation workflows", () => {
+  const migration = readFileSync(join(ROOT, "database/migrations/005_authenticated_commercial_workflows.sql"), "utf8");
+  assert.match(migration, /create (?:or replace )?function app_private\.sync_current_app_user/);
+  assert.match(migration, /create function app_private\.current_user_email/);
+  assert.match(migration, /create function sync_current_app_user/);
+  assert.match(migration, /create function create_business_invitation/);
+  assert.match(migration, /create function accept_business_invitation/);
+  assert.match(migration, /create function record_receiving_delivery/);
+  assert.match(migration, /client_idempotency_key/);
+  assert.match(migration, /create function decide_receiving_delivery/);
+  assert.match(migration, /create table receiving_delivery_events/);
+  assert.match(migration, /receiving_delivery_events_are_immutable/);
+  assert.match(migration, /grant execute on function record_receiving_delivery/);
+});

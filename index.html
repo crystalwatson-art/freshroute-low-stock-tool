@@ -371,6 +371,69 @@
           </button>
         </div>
 
+        <section class="commercial-account" aria-labelledby="commercial-account-title">
+          <div class="tool-panel-heading">
+            <p class="eyebrow">Commercial account</p>
+            <h2 id="commercial-account-title">Business sign-in</h2>
+            <p id="commercial-account-status" role="status">Classroom demo mode is active. Commercial authentication is not configured for this preview.</p>
+          </div>
+          <div id="commercial-auth-feedback" class="upload-feedback" role="status" aria-live="polite" hidden></div>
+          <form id="commercial-auth-form" class="commercial-auth-form" novalidate>
+            <div class="receiving-field">
+              <label for="commercial-email">Email</label>
+              <input id="commercial-email" name="email" type="email" autocomplete="email" required>
+            </div>
+            <div class="receiving-field">
+              <label for="commercial-display-name">Display name</label>
+              <input id="commercial-display-name" name="displayName" autocomplete="name" maxlength="120">
+            </div>
+            <div class="receiving-field">
+              <label for="commercial-password">Password</label>
+              <input id="commercial-password" name="password" type="password" autocomplete="current-password" minlength="8" required>
+            </div>
+            <div class="decision-actions">
+              <button class="primary-button" type="submit" data-auth-action="signin">Sign in</button>
+              <button class="secondary-button" type="submit" data-auth-action="signup">Create account</button>
+              <button class="text-button" type="button" id="commercial-recovery">Send recovery email</button>
+              <button class="text-button" type="button" id="commercial-signout" hidden>Sign out</button>
+            </div>
+          </form>
+          <div id="business-access-panel" class="business-access-panel" hidden>
+            <section aria-labelledby="invite-member-title">
+              <h3 id="invite-member-title">Invite a business member</h3>
+              <form id="business-invite-form" class="commercial-auth-form" novalidate>
+                <div class="receiving-field">
+                  <label for="invite-member-email">Member email</label>
+                  <input id="invite-member-email" name="email" type="email" autocomplete="email" required>
+                </div>
+                <div class="receiving-field">
+                  <label for="invite-member-role">Role</label>
+                  <select id="invite-member-role" name="role">
+                    <option value="worker">Worker</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="administrator">Administrator</option>
+                  </select>
+                </div>
+                <button class="secondary-button" type="submit">Send invitation</button>
+              </form>
+            </section>
+            <section aria-labelledby="accept-invite-title">
+              <h3 id="accept-invite-title">Accept an invitation</h3>
+              <form id="business-accept-form" class="commercial-auth-form" novalidate>
+                <div class="receiving-field">
+                  <label for="accept-invitation-id">Invitation ID</label>
+                  <input id="accept-invitation-id" name="invitationId" required>
+                </div>
+                <div class="receiving-field">
+                  <label for="accept-invitation-token">Invitation token</label>
+                  <input id="accept-invitation-token" name="invitationToken" type="password" required>
+                </div>
+                <button class="secondary-button" type="submit">Accept invitation</button>
+              </form>
+            </section>
+          </div>
+        </section>
+
         <section class="settings-help" aria-labelledby="help-title">
           <div class="tool-panel-heading">
           <p class="eyebrow">FreshRoute guide</p>
@@ -457,6 +520,7 @@
   <script src="receiving-core.js"></script>
   <script src="reconciliation-core.js"></script>
   <script src="reconciliation-ui.js"></script>
+  <script src="commercial-client.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

@@ -11,7 +11,8 @@ const MIGRATIONS = [
   join(ROOT, "database/migrations/001_commercial_foundation.sql"),
   join(ROOT, "database/migrations/002_access_control_and_approval.sql"),
   join(ROOT, "database/migrations/003_warehouse_locations_and_transfers.sql"),
-  join(ROOT, "database/migrations/004_new_product_review.sql")
+  join(ROOT, "database/migrations/004_new_product_review.sql"),
+  join(ROOT, "database/migrations/005_authenticated_commercial_workflows.sql")
 ];
 const DEFAULT_POSTGRES_BINS = [
   process.env.POSTGRES_BIN,
@@ -135,7 +136,7 @@ async function run() {
   for (const migration of MIGRATIONS) {
     command(join(postgresBin, "psql"), psqlArgs(["-f", migration]));
   }
-  pass("all four migrations apply to a new PostgreSQL cluster");
+  pass("all five migrations apply to a new PostgreSQL cluster");
 
   runSql(String.raw`
 insert into businesses (id, name) values
@@ -173,6 +174,12 @@ insert into products (id, business_id, sku, name, base_unit) values
   ('30000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'A-KG', 'Business A Mass Product', 'kg'),
   ('30000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001', 'A-LOCK', 'Business A Lock Product', 'each'),
   ('30000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 'B-EACH', 'Business B Product', 'each');
+
+update products set brand = case id
+  when '30000000-0000-0000-0000-000000000001' then 'A Brand'
+  when '30000000-0000-0000-0000-000000000002' then 'A Mass Brand'
+  when '30000000-0000-0000-0000-000000000005' then 'A Lock Brand'
+  else 'B Brand' end;
 
 insert into product_unit_conversions (
   business_id, product_id, from_unit, to_base_factor, rule_source, created_by
@@ -965,6 +972,109 @@ $$;
 reset role;
   `);
   pass("cross-tenant access is denied and duplicate product creation is blocked");
+
+  runSql(String.raw`
+reset role;
+create table freshroute_test_ids (delivery_id uuid, replay_delivery_id uuid, review_id uuid, invitation_id uuid);
+grant select, insert on freshroute_test_ids to authenticated;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+insert into freshroute_test_ids (delivery_id)
+select (record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001',
+  'commercial-receiving-key-001',
+  '{"supplier":"Commercial Supplier","delivered_on":"2026-10-15","inspection_notes":"Server persistence test"}'::jsonb,
+  '[
+    {"sku":"A-EACH","product_name":"Business A Each Product","brand":"A Brand","total_boxes":2,"total_units":10,"units_per_box":5,"damaged_boxes":0,"damaged_units":2},
+    {"sku":"NEW-SERVER","product_name":"Server New Product","brand":"Server Brand","total_boxes":1,"total_units":6,"units_per_box":6,"damaged_boxes":0,"damaged_units":1}
+  ]'::jsonb
+)->>'delivery_id')::uuid;
+insert into freshroute_test_ids (replay_delivery_id)
+select (record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001',
+  'commercial-receiving-key-001',
+  '{"supplier":"Commercial Supplier","delivered_on":"2026-10-15"}'::jsonb,
+  '[]'::jsonb
+)->>'delivery_id')::uuid;
+
+do $$
+declare blocked boolean := false; message text;
+begin
+  if (select delivery_id from freshroute_test_ids where delivery_id is not null limit 1) <> (select replay_delivery_id from freshroute_test_ids where replay_delivery_id is not null limit 1) then
+    raise exception 'Receiving idempotency replay returned a different delivery';
+  end if;
+  if (select count(*) from receiving_deliveries where client_idempotency_key = 'commercial-receiving-key-001') <> 1 then
+    raise exception 'Receiving idempotency created duplicate deliveries';
+  end if;
+  if (select count(*) from new_product_reviews where sku = 'NEW-SERVER') <> 1 then
+    raise exception 'Unknown receiving SKU was not retained for review';
+  end if;
+  begin
+    perform decide_receiving_delivery((select delivery_id from freshroute_test_ids where delivery_id is not null limit 1), 'approve', 'Worker must not approve', 'commercial-delivery-key-1');
+  exception when others then blocked := true; message := sqlerrm;
+  end;
+  if not blocked or position('Supervisor or Administrator' in message) = 0 then
+    raise exception 'Worker delivery approval was not rejected: %', message;
+  end if;
+end $$;
+reset role;
+  `);
+  pass("authenticated receiving persists known and unknown lines with idempotent replay");
+
+  runSql(String.raw`
+insert into freshroute_test_ids (review_id)
+select id
+from new_product_reviews
+where sku = 'NEW-SERVER';
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);
+select review_new_product((select review_id from freshroute_test_ids where review_id is not null limit 1), 'approve', 'Verified by the authenticated supervisor.', 'commercial-new-product-key-1');
+select decide_receiving_delivery((select delivery_id from freshroute_test_ids where delivery_id is not null limit 1), 'approve', 'Verified commercial delivery.', 'commercial-delivery-key-1');
+select decide_receiving_delivery((select delivery_id from freshroute_test_ids where delivery_id is not null limit 1), 'approve', 'Safe retry.', 'commercial-delivery-key-1');
+reset role;
+
+do $$
+declare blocked boolean := false; message text;
+begin
+  if (select count(*) from products where sku = 'NEW-SERVER') <> 1 then raise exception 'Server new product was not created once'; end if;
+  if (select quantity from inventory_balances where product_id = (select id from products where sku = 'NEW-SERVER')) <> 5 then raise exception 'Server new product posted the wrong accepted quantity'; end if;
+  if (select count(*) from inventory_transactions where idempotency_key = 'commercial-delivery-key-1') <> 1 then raise exception 'Known receiving line was posted more than once'; end if;
+  if jsonb_array_length(list_receiving_records('10000000-0000-0000-0000-000000000001')) = 0 then raise exception 'Saved commercial receiving records were not readable'; end if;
+  begin
+    update receiving_delivery_events set reason = 'tampered' where delivery_id = (select delivery_id from freshroute_test_ids where delivery_id is not null limit 1);
+  exception when others then blocked := true; message := sqlerrm;
+  end;
+  if not blocked or position('append-only' in message) = 0 then raise exception 'Receiving audit history was mutable: %', message; end if;
+end $$;
+  `);
+  pass("authenticated review and delivery decisions post only accepted stock once and keep immutable audit history");
+
+  runSql(String.raw`
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', false);
+select create_business_invitation(
+  '10000000-0000-0000-0000-000000000001', 'invited-commercial@example.test', 'worker',
+  encode(digest('commercial-invite-token', 'sha256'), 'hex')
+);
+insert into freshroute_test_ids (invitation_id)
+select id from business_invitations where email = 'invited-commercial@example.test';
+reset role;
+insert into app_users (id, email, display_name)
+values ('20000000-0000-0000-0000-000000000007', 'invited-commercial@example.test', 'Invited Commercial');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000007', false);
+select set_config('request.jwt.claim.email', 'invited-commercial@example.test', false);
+select accept_business_invitation(
+  (select invitation_id from freshroute_test_ids where invitation_id is not null limit 1),
+  'commercial-invite-token', 'invited-commercial@example.test', 'Invited Commercial'
+);
+do $$ begin
+  if (select count(*) from businesses) <> 1 then raise exception 'Accepted invite did not grant business access'; end if;
+  if (select role from business_memberships where user_id = '20000000-0000-0000-0000-000000000007') <> 'worker' then raise exception 'Accepted invite role was not preserved'; end if;
+end $$;
+reset role;
+  `);
+  pass("administrator invitations require token acceptance before a worker membership becomes active");
 
   const newProductSession = "set role authenticated; select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);";
   const [newProductFirst, newProductSecond] = await Promise.all([

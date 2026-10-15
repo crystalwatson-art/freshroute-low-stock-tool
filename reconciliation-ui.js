@@ -10,6 +10,7 @@ const FreshRouteReconciliationUI = (() => {
       getInventory,
       getSourceKey,
       getSourceLabel,
+      setRecords = () => {},
       onInventoryChanged
     } = options;
     const list = document.getElementById("saved-receiving-list");
@@ -136,12 +137,14 @@ const FreshRouteReconciliationUI = (() => {
         ? `<section class="new-product-review" aria-labelledby="new-product-review-title">
             <div class="saved-receiving-heading">
               <div>
-                <p class="eyebrow">Supervisor path · demo only</p>
+                <p class="eyebrow">Supervisor path · ${window.FreshRouteCommercial?.configured ? "authenticated" : "demo only"}</p>
                 <h4 id="new-product-review-title">New Product Review</h4>
               </div>
               <span class="mode-badge">Unfamiliar SKU</span>
             </div>
-            <p>Verify the product identity, measurement, accepted quantity, and stock thresholds before posting it. The local demo cannot authenticate this approval.</p>
+            <p>${window.FreshRouteCommercial?.configured
+              ? "Verify every product field. The signed-in Supervisor or Administrator session is checked on the server."
+              : "Verify the product identity, measurement, accepted quantity, and stock thresholds before posting it. The local demo cannot authenticate this approval."}</p>
             ${prepared.unknownItems.map((item, index) => renderNewProductReviewForm(record, item, index)).join("")}
           </section>`
         : "";
@@ -214,10 +217,9 @@ const FreshRouteReconciliationUI = (() => {
         <form id="supervisor-decision-form" class="supervisor-decision-form" novalidate>
           <h4>Supervisor decision</h4>
           <div class="decision-fields">
-            <div class="receiving-field">
-              <label for="decision-supervisor">Supervisor name <span aria-hidden="true">*</span></label>
-              <input id="decision-supervisor" name="supervisor" type="text" maxlength="120" autocomplete="name" required>
-            </div>
+            ${window.FreshRouteCommercial?.configured
+              ? `<p class="authenticated-actor-note">Decision actor: authenticated business session. A typed name is not used for authorization.</p>`
+              : `<div class="receiving-field"><label for="decision-supervisor">Supervisor name <span aria-hidden="true">*</span></label><input id="decision-supervisor" name="supervisor" type="text" maxlength="120" autocomplete="name" required></div>`}
             <div class="receiving-field">
               <label for="decision-reason">Reason (required for rejection)</label>
               <textarea id="decision-reason" name="reason" rows="2" maxlength="500"></textarea>
@@ -253,7 +255,9 @@ const FreshRouteReconciliationUI = (() => {
             <div class="receiving-field"><label for="${formId}-low">Low-stock threshold</label><input id="${formId}-low" name="lowStockThreshold" type="number" min="0" step="any" value="0" required></div>
             <div class="receiving-field"><label for="${formId}-reorder">Reorder threshold</label><input id="${formId}-reorder" name="reorderThreshold" type="number" min="0" step="any" value="0" required></div>
             <div class="receiving-field new-product-review-reason"><label for="${formId}-reason">Decision reason</label><textarea id="${formId}-reason" name="reason" maxlength="1000" required placeholder="Explain what was verified or what must be corrected"></textarea></div>
-            <div class="receiving-field"><label for="${formId}-actor">Supervisor name <span aria-hidden="true">*</span></label><input id="${formId}-actor" name="actedBy" maxlength="120" required placeholder="Demo only — not authentication"></div>
+            ${window.FreshRouteCommercial?.configured
+              ? `<p class="authenticated-actor-note">Decision actor: authenticated business session. A typed name is not used for authorization.</p>`
+              : `<div class="receiving-field"><label for="${formId}-actor">Supervisor name <span aria-hidden="true">*</span></label><input id="${formId}-actor" name="actedBy" maxlength="120" required placeholder="Demo only — not authentication"></div>`}
           </div>
           <div class="decision-actions">
             <button class="secondary-button" type="submit" data-new-product-decision="reject">Reject product</button>
@@ -324,7 +328,7 @@ const FreshRouteReconciliationUI = (() => {
       }
     }
 
-    function handleNewProductDecision(event, record) {
+    async function handleNewProductDecision(event, record) {
       const form = event.target;
       const submitter = event.submitter;
       const item = (record.items || []).find((candidate) => {
@@ -332,6 +336,46 @@ const FreshRouteReconciliationUI = (() => {
         return key === form.dataset.sourceItemKey;
       });
       const fields = Object.fromEntries(new FormData(form).entries());
+      const commercial = window.FreshRouteCommercial;
+      if (commercial?.configured) {
+        if (!commercial.isAuthenticated || !commercial.activeBusinessId) {
+          showFeedback("Sign in with an active business membership before reviewing a new product.", "error");
+          return;
+        }
+        if (!item?.newProductReviewId) {
+          showFeedback("This commercial record is missing its server review ID. Reload the records and try again.", "error");
+          return;
+        }
+        const secureResult = FreshRouteReconciliation.createNewProductDecision({
+          id: item.newProductReviewId,
+          record,
+          item,
+          inventory: getInventory(),
+          sourceKey: getSourceKey(),
+          decision: submitter?.dataset.newProductDecision,
+          actedBy: "authenticated-session",
+          fields
+        });
+        if (!secureResult.valid) {
+          showFeedback("This new-product review needs attention.", "error", secureResult.errors);
+          return;
+        }
+        try {
+          await commercial.reviewNewProduct({
+            reviewId: item.newProductReviewId,
+            decision: submitter?.dataset.newProductDecision,
+            reason: fields.reason,
+            idempotencyKey: `new-product:${item.newProductReviewId}:${submitter?.dataset.newProductDecision}`
+          });
+          const refreshed = await commercial.loadReceivingRecords();
+          setRecords(refreshed);
+          render();
+          showFeedback("The authenticated server recorded the new-product decision.", "success");
+        } catch (error) {
+          showFeedback(`The server could not record this decision: ${error.message}`, "error");
+        }
+        return;
+      }
       const result = FreshRouteReconciliation.createNewProductDecision({
         id: createId("new-product-review"),
         record,
@@ -359,9 +403,40 @@ const FreshRouteReconciliationUI = (() => {
       );
     }
 
-    function handleDecision(event, record) {
+    async function handleDecision(event, record) {
       const decisionType = event.submitter?.dataset.decision;
-      const supervisor = event.target.elements.supervisor.value;
+      const supervisor = event.target.elements.supervisor?.value || "authenticated-session";
+      const commercial = window.FreshRouteCommercial;
+      if (commercial?.configured) {
+        if (!commercial.isAuthenticated || !commercial.activeBusinessId) {
+          showFeedback("Sign in with an active business membership before reconciling a delivery.", "error");
+          return;
+        }
+        if (decisionType === "approve" && !event.target.elements.confirmation.checked) {
+          showFeedback("Confirm that you reviewed the quantities before approval.", "error");
+          return;
+        }
+        const reason = event.target.elements.reason.value.trim();
+        if (!reason) {
+          showFeedback("A decision reason is required.", "error");
+          return;
+        }
+        try {
+          await commercial.decideDelivery({
+            deliveryId: record.id,
+            decision: decisionType,
+            reason,
+            idempotencyKey: `delivery:${record.id}:${decisionType}`
+          });
+          const refreshed = await commercial.loadReceivingRecords();
+          setRecords(refreshed);
+          render();
+          showFeedback("The authenticated server recorded the delivery decision.", "success");
+        } catch (error) {
+          showFeedback(`The server could not record this decision: ${error.message}`, "error");
+        }
+        return;
+      }
       if (decisionType === "approve") {
         if (!event.target.elements.confirmation.checked) {
           showFeedback("Confirm that you reviewed the quantities before approval.", "error");
