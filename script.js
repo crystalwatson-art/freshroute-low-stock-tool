@@ -50,6 +50,7 @@ let receivingItems = [];
 let damagePhoto = null;
 let receivingRecords = loadReceivingRecords();
 let reconciliationController = null;
+let receivingFeedbackContext = null;
 
 const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
@@ -69,12 +70,14 @@ const paginationContainers = [
 ];
 const summaryCards = [...document.querySelectorAll(".summary-card[data-status-filter]")];
 const toolNavigation = document.querySelector(".dashboard-navigation");
-const toolButtons = [...document.querySelectorAll(".nav-tool-button[data-tool-panel]")];
-const toolPanels = [...document.querySelectorAll(".tool-panel")];
+const pageButtons = [...document.querySelectorAll(".nav-tool-button[data-page-target]")];
+const pageWorkspaces = [...document.querySelectorAll(".page-workspace[data-page]")];
+const validPages = new Set(pageWorkspaces.map((workspace) => workspace.dataset.page));
 const receivingForm = document.getElementById("receiving-form");
 const receivingTableBody = document.getElementById("receiving-table-body");
 const receivingFeedback = document.getElementById("receiving-feedback");
 const damagePhotoInput = document.getElementById("damage-photo");
+const criticalProducts = document.getElementById("critical-products");
 
 document.addEventListener("DOMContentLoaded", () => {
   applySavedTheme();
@@ -82,12 +85,13 @@ document.addEventListener("DOMContentLoaded", () => {
   productSearch.addEventListener("input", applyFilters);
   refreshButton.addEventListener("click", refreshCurrentData);
   themeToggle.addEventListener("click", toggleTheme);
-  toolNavigation.addEventListener("click", handleToolNavigationClick);
-  toolNavigation.addEventListener("keydown", handleToolNavigationKeydown);
-  toolPanels.forEach((panel) => panel.addEventListener("keydown", handleToolPanelKeydown));
+  toolNavigation.addEventListener("click", handlePageNavigationClick);
+  toolNavigation.addEventListener("keydown", handlePageNavigationKeydown);
+  window.addEventListener("hashchange", handlePageHashChange);
   receivingForm.addEventListener("input", handleReceivingInput);
   receivingForm.addEventListener("submit", addReceivingItem);
   receivingTableBody.addEventListener("click", removeReceivingItem);
+  criticalProducts.addEventListener("click", handleCriticalProductsClick);
   damagePhotoInput.addEventListener("change", handleDamagePhoto);
   document.getElementById("remove-damage-photo").addEventListener("click", clearDamagePhoto);
   document.getElementById("save-receiving-record").addEventListener("click", saveReceivingRecord);
@@ -115,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
     onInventoryChanged: refreshInventoryAfterReconciliation
   });
   updateBackToTopVisibility();
+  navigateToPage(getPageFromHash(), { updateHash: false });
   receivingForm.elements.deliveryDate.value = getLocalTodayISO();
   renderReceivingReview();
   renderSavedReceivingRecords();
@@ -122,71 +127,86 @@ document.addEventListener("DOMContentLoaded", () => {
   loadDemoData();
 });
 
-function handleToolNavigationClick(event) {
-  const button = event.target.closest(".nav-tool-button[data-tool-panel]");
+function handlePageNavigationClick(event) {
+  const button = event.target.closest(".nav-tool-button[data-page-target]");
   if (!button) return;
-  toggleToolPanel(button);
+  navigateToPage(button.dataset.pageTarget);
 }
 
-function handleToolNavigationKeydown(event) {
-  const button = event.target.closest(".nav-tool-button[data-tool-panel]");
+function handlePageNavigationKeydown(event) {
+  const button = event.target.closest(".nav-tool-button[data-page-target]");
   if (!button) return;
 
-  const currentIndex = toolButtons.indexOf(button);
+  const currentIndex = pageButtons.indexOf(button);
   const keyActions = {
-    ArrowRight: (currentIndex + 1) % toolButtons.length,
-    ArrowDown: (currentIndex + 1) % toolButtons.length,
-    ArrowLeft: (currentIndex - 1 + toolButtons.length) % toolButtons.length,
-    ArrowUp: (currentIndex - 1 + toolButtons.length) % toolButtons.length,
+    ArrowRight: (currentIndex + 1) % pageButtons.length,
+    ArrowDown: (currentIndex + 1) % pageButtons.length,
+    ArrowLeft: (currentIndex - 1 + pageButtons.length) % pageButtons.length,
+    ArrowUp: (currentIndex - 1 + pageButtons.length) % pageButtons.length,
     Home: 0,
-    End: toolButtons.length - 1
+    End: pageButtons.length - 1
   };
 
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
-    toggleToolPanel(button);
+    navigateToPage(button.dataset.pageTarget);
   } else if (Object.hasOwn(keyActions, event.key)) {
     event.preventDefault();
-    toolButtons[keyActions[event.key]].focus();
-  } else if (event.key === "Escape") {
-    closeToolPanels();
-    button.focus();
+    pageButtons[keyActions[event.key]].focus();
   }
 }
 
-function handleToolPanelKeydown(event) {
-  if (event.key !== "Escape") return;
-  const panel = event.currentTarget;
-  const button = toolButtons.find((item) => item.dataset.toolPanel === panel.id);
-  closeToolPanels();
-  button?.focus();
+function handlePageHashChange() {
+  navigateToPage(getPageFromHash(), { updateHash: false });
 }
 
-function toggleToolPanel(button) {
-  const shouldOpen = button.getAttribute("aria-expanded") !== "true";
-  const panel = document.getElementById(button.dataset.toolPanel);
-  closeToolPanels();
+function getPageFromHash() {
+  const page = window.location.hash.slice(1).toLowerCase();
+  return validPages.has(page) ? page : "dashboard";
+}
 
-  if (shouldOpen && panel) {
-    panel.hidden = false;
-    button.setAttribute("aria-expanded", "true");
-    button.classList.add("is-active");
+function navigateToPage(page, { updateHash = true } = {}) {
+  const nextPage = validPages.has(page) ? page : "dashboard";
+  pageButtons.forEach((button) => {
+    const isActive = button.dataset.pageTarget === nextPage;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+    if (isActive) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  pageWorkspaces.forEach((workspace) => {
+    workspace.hidden = workspace.dataset.page !== nextPage;
+  });
+
+  if (updateHash && window.location.hash !== `#${nextPage}`) {
+    window.history.pushState({}, "", `#${nextPage}`);
   }
+
+  return nextPage;
 }
 
-function closeToolPanels() {
-  toolButtons.forEach((button) => {
-    button.setAttribute("aria-expanded", "false");
-    button.classList.remove("is-active");
-  });
-  toolPanels.forEach((panel) => {
-    panel.hidden = true;
-  });
-}
+window.FreshRouteNavigation = { goTo: navigateToPage };
 
 function handleReceivingInput() {
   updateReceivingCalculation();
   renderReceivingReview();
+
+  if (receivingFeedbackContext === "item") {
+    const result = calculateReceivingItem(getReceivingItemInput());
+    if (result.valid) {
+      clearReceivingFeedback();
+    } else {
+      showReceivingFeedback("Fix this product count before adding it.", "error", result.errors, "item");
+    }
+  } else if (receivingFeedbackContext === "record") {
+    const detailsResult = validateDeliveryDetails(getReceivingDeliveryDetails());
+    const errors = [...detailsResult.errors];
+    if (receivingItems.length === 0) errors.push("Add at least one product count.");
+    if (errors.length === 0) clearReceivingFeedback();
+    else showReceivingFeedback("Complete the receiving record before saving it.", "error", errors, "record");
+  } else {
+    clearReceivingFeedback();
+  }
 }
 
 function getReceivingItemInput() {
@@ -240,7 +260,7 @@ function addReceivingItem(event) {
   const result = calculateReceivingItem(getReceivingItemInput());
 
   if (!result.valid) {
-    showReceivingFeedback("Fix this product count before adding it.", "error", result.errors);
+    showReceivingFeedback("Fix this product count before adding it.", "error", result.errors, "item");
     return;
   }
 
@@ -372,7 +392,7 @@ function saveReceivingRecord() {
   if (receivingItems.length === 0) errors.push("Add at least one product count.");
 
   if (errors.length > 0) {
-    showReceivingFeedback("Complete the receiving record before saving it.", "error", errors);
+    showReceivingFeedback("Complete the receiving record before saving it.", "error", errors, "record");
     return;
   }
 
@@ -422,8 +442,7 @@ function resetReceivingDraft({ keepFeedback = false } = {}) {
   document.getElementById("damage-photo-name").textContent = "";
   document.getElementById("damage-photo-preview").hidden = true;
   if (!keepFeedback) {
-    receivingFeedback.hidden = true;
-    receivingFeedback.textContent = "";
+    clearReceivingFeedback();
   }
   updateReceivingCalculation();
   renderReceivingReview();
@@ -458,7 +477,16 @@ function renderSavedReceivingRecords() {
   reconciliationController?.render();
 }
 
-function showReceivingFeedback(message, type, details = []) {
+function clearReceivingFeedback() {
+  receivingFeedbackContext = null;
+  receivingFeedback.hidden = true;
+  receivingFeedback.replaceChildren();
+  receivingFeedback.className = "upload-feedback";
+  receivingFeedback.removeAttribute("role");
+}
+
+function showReceivingFeedback(message, type, details = [], context = null) {
+  receivingFeedbackContext = context;
   receivingFeedback.replaceChildren();
   receivingFeedback.className =
     `upload-feedback ${type === "error" ? "error-message" : "success-message"}`;
@@ -902,10 +930,30 @@ function renderCriticalAlert() {
 
   if (criticalItems.length > 3) {
     const moreItem = document.createElement("li");
-    moreItem.className = "more-critical";
-    moreItem.textContent = `+ ${criticalItems.length - 3} more`;
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "more-critical";
+    moreButton.dataset.criticalExpiryMore = "true";
+    moreButton.setAttribute("aria-label", `Show all ${criticalItems.length} critical expiry products`);
+    moreButton.textContent = `+ ${criticalItems.length - 3} more`;
+    moreItem.appendChild(moreButton);
     productList.appendChild(moreItem);
   }
+}
+
+function handleCriticalProductsClick(event) {
+  const moreButton = event.target.closest("[data-critical-expiry-more]");
+  if (!moreButton) return;
+
+  navigateToPage("inventory");
+  statusFilter.value = "critical-expiry";
+  productSearch.value = "";
+  updateActiveSummaryCard(statusFilter.value);
+  applyFilters();
+  document.getElementById("inventory-title").scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start"
+  });
 }
 
 function applyFilters() {
@@ -931,6 +979,7 @@ function handleStatusFilterChange() {
 
 function activateSummaryCard(event) {
   const selectedCard = event.currentTarget;
+  navigateToPage("inventory");
   statusFilter.value = selectedCard.dataset.statusFilter;
   productSearch.value = "";
   currentPage = 1;
@@ -964,6 +1013,9 @@ function matchesStatusFilter(item, selectedStatus) {
   if (selectedStatus === "requests-sent") return sentRequests.has(item.requestKey);
   if (selectedStatus === "expired") return isExpired(item.daysToExpiry);
   if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry);
+  if (selectedStatus === "critical-expiry") {
+    return item.daysToExpiry !== null && item.daysToExpiry <= CRITICAL_EXPIRY_DAYS;
+  }
   return item.status === selectedStatus;
 }
 

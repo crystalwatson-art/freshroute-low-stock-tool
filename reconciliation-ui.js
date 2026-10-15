@@ -75,6 +75,7 @@ const FreshRouteReconciliationUI = (() => {
       if (!button) return;
       selectedRecordId = button.dataset.reviewRecord;
       feedback.hidden = true;
+      window.FreshRouteNavigation?.goTo("reconciliation");
       renderReview();
       review.hidden = false;
       review.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
