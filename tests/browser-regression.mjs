@@ -3,12 +3,18 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const CHROME = process.env.CHROME_BIN || [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser"
+].find((candidate) => existsSync(candidate));
 const ROOT = normalize(join(fileURLToPath(new URL(".", import.meta.url)), ".."));
 const checks = [];
 
@@ -126,6 +132,8 @@ async function run() {
   const chrome = spawn(CHROME, [
     "--headless=new",
     "--disable-gpu",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
     "--no-first-run",
     "--no-default-browser-check",
     `--remote-debugging-port=${debugPort}`,
@@ -164,10 +172,39 @@ async function run() {
     );
     pass("dashboard loads the 40-SKU demo inventory");
 
+    const pageNavigation = await cdp.evaluate(`(() => {
+      const buttons = [...document.querySelectorAll("[data-page-target]")];
+      const results = buttons.map((button) => {
+        button.click();
+        const target = document.getElementById(button.dataset.pageTarget + "-page");
+        return {
+          page: button.dataset.pageTarget,
+          visible: !target.hidden,
+          activeButton: button.getAttribute("aria-selected") === "true",
+          visiblePages: [...document.querySelectorAll(".page-workspace[data-page]")].filter((page) => !page.hidden).map((page) => page.dataset.page)
+        };
+      });
+      document.getElementById("dashboard-button").click();
+      return results;
+    })()`);
+    assert.deepEqual(pageNavigation.map((result) => result.page), ["dashboard", "inventory", "receiving", "reconciliation", "import-data", "settings"]);
+    assert.equal(pageNavigation.every((result) => result.visible && result.activeButton && result.visiblePages.length === 1), true);
+    pass("primary navigation opens one clear workspace for every page");
+
     await cdp.evaluate(`document.getElementById("receiving-button").focus()`);
     await pressKey(cdp, "Enter", "Enter");
-    assert.equal(await cdp.evaluate('!document.getElementById("receiving-panel").hidden'), true);
-    pass("keyboard opens the receiving panel");
+    assert.equal(await cdp.evaluate('!document.getElementById("receiving-page").hidden'), true);
+    pass("keyboard opens the Receive Delivery workspace");
+
+    await cdp.evaluate(`(() => {
+      const supplier = document.getElementById("delivery-supplier");
+      supplier.value = "Unfinished Supplier Draft";
+      supplier.dispatchEvent(new Event("input", { bubbles: true }));
+      document.getElementById("inventory-button").click();
+      document.getElementById("receiving-button").click();
+    })()`);
+    assert.equal(await cdp.evaluate('document.getElementById("delivery-supplier").value'), "Unfinished Supplier Draft");
+    pass("switching pages preserves an unfinished receiving draft");
 
     const product = await cdp.evaluate(`(() => {
       const item = inventoryData.find((entry) => Number.isFinite(entry.currentStock));
@@ -292,7 +329,7 @@ async function run() {
     assert.match(await cdp.evaluate('document.querySelector(".rejected-decision").textContent'), /inventory unchanged/i);
     pass("rejected delivery records a reason and leaves inventory unchanged");
 
-    await cdp.evaluate('document.getElementById("import-inventory-button").click()');
+    await cdp.evaluate('document.getElementById("import-data-button").click()');
     const documentNode = await cdp.send("DOM.getDocument");
     const inputNode = await cdp.send("DOM.querySelector", {
       nodeId: documentNode.root.nodeId,
@@ -347,9 +384,9 @@ async function run() {
     const originalTheme = await cdp.evaluate('document.documentElement.dataset.theme');
     await cdp.evaluate('document.getElementById("settings-button").click(); document.getElementById("theme-toggle").click()');
     assert.notEqual(await cdp.evaluate('document.documentElement.dataset.theme'), originalTheme);
-    await cdp.evaluate('document.getElementById("theme-toggle").click(); document.getElementById("help-button").click()');
-    assert.equal(await cdp.evaluate('!document.getElementById("help-panel").hidden'), true);
-    pass("settings, theme switching, and Help navigation still work");
+    await cdp.evaluate('document.getElementById("theme-toggle").click()');
+    assert.equal(await cdp.evaluate('!document.getElementById("settings-page").hidden && document.getElementById("help-title").textContent === "Help"'), true);
+    pass("settings, theme switching, and Help content still work");
 
     await cdp.evaluate(`(() => {
       document.getElementById("status-filter").value = "expired";
@@ -361,6 +398,7 @@ async function run() {
     pass("expired-item removal flags and active-inventory progress still work");
 
     await cdp.evaluate(`(() => {
+      document.getElementById("dashboard-button").click();
       const card = document.querySelector('.summary-card[data-status-filter="needs-restock"]');
       card.focus();
     })()`);

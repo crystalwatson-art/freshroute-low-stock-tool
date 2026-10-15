@@ -69,8 +69,9 @@ const paginationContainers = [
 ];
 const summaryCards = [...document.querySelectorAll(".summary-card[data-status-filter]")];
 const toolNavigation = document.querySelector(".dashboard-navigation");
-const toolButtons = [...document.querySelectorAll(".nav-tool-button[data-tool-panel]")];
-const toolPanels = [...document.querySelectorAll(".tool-panel")];
+const pageButtons = [...document.querySelectorAll(".nav-tool-button[data-page-target]")];
+const pageWorkspaces = [...document.querySelectorAll(".page-workspace[data-page]")];
+const validPages = new Set(pageWorkspaces.map((workspace) => workspace.dataset.page));
 const receivingForm = document.getElementById("receiving-form");
 const receivingTableBody = document.getElementById("receiving-table-body");
 const receivingFeedback = document.getElementById("receiving-feedback");
@@ -82,9 +83,9 @@ document.addEventListener("DOMContentLoaded", () => {
   productSearch.addEventListener("input", applyFilters);
   refreshButton.addEventListener("click", refreshCurrentData);
   themeToggle.addEventListener("click", toggleTheme);
-  toolNavigation.addEventListener("click", handleToolNavigationClick);
-  toolNavigation.addEventListener("keydown", handleToolNavigationKeydown);
-  toolPanels.forEach((panel) => panel.addEventListener("keydown", handleToolPanelKeydown));
+  toolNavigation.addEventListener("click", handlePageNavigationClick);
+  toolNavigation.addEventListener("keydown", handlePageNavigationKeydown);
+  window.addEventListener("hashchange", handlePageHashChange);
   receivingForm.addEventListener("input", handleReceivingInput);
   receivingForm.addEventListener("submit", addReceivingItem);
   receivingTableBody.addEventListener("click", removeReceivingItem);
@@ -115,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
     onInventoryChanged: refreshInventoryAfterReconciliation
   });
   updateBackToTopVisibility();
+  navigateToPage(getPageFromHash(), { updateHash: false });
   receivingForm.elements.deliveryDate.value = getLocalTodayISO();
   renderReceivingReview();
   renderSavedReceivingRecords();
@@ -122,67 +124,65 @@ document.addEventListener("DOMContentLoaded", () => {
   loadDemoData();
 });
 
-function handleToolNavigationClick(event) {
-  const button = event.target.closest(".nav-tool-button[data-tool-panel]");
+function handlePageNavigationClick(event) {
+  const button = event.target.closest(".nav-tool-button[data-page-target]");
   if (!button) return;
-  toggleToolPanel(button);
+  navigateToPage(button.dataset.pageTarget);
 }
 
-function handleToolNavigationKeydown(event) {
-  const button = event.target.closest(".nav-tool-button[data-tool-panel]");
+function handlePageNavigationKeydown(event) {
+  const button = event.target.closest(".nav-tool-button[data-page-target]");
   if (!button) return;
 
-  const currentIndex = toolButtons.indexOf(button);
+  const currentIndex = pageButtons.indexOf(button);
   const keyActions = {
-    ArrowRight: (currentIndex + 1) % toolButtons.length,
-    ArrowDown: (currentIndex + 1) % toolButtons.length,
-    ArrowLeft: (currentIndex - 1 + toolButtons.length) % toolButtons.length,
-    ArrowUp: (currentIndex - 1 + toolButtons.length) % toolButtons.length,
+    ArrowRight: (currentIndex + 1) % pageButtons.length,
+    ArrowDown: (currentIndex + 1) % pageButtons.length,
+    ArrowLeft: (currentIndex - 1 + pageButtons.length) % pageButtons.length,
+    ArrowUp: (currentIndex - 1 + pageButtons.length) % pageButtons.length,
     Home: 0,
-    End: toolButtons.length - 1
+    End: pageButtons.length - 1
   };
 
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
-    toggleToolPanel(button);
+    navigateToPage(button.dataset.pageTarget);
   } else if (Object.hasOwn(keyActions, event.key)) {
     event.preventDefault();
-    toolButtons[keyActions[event.key]].focus();
-  } else if (event.key === "Escape") {
-    closeToolPanels();
-    button.focus();
+    pageButtons[keyActions[event.key]].focus();
   }
 }
 
-function handleToolPanelKeydown(event) {
-  if (event.key !== "Escape") return;
-  const panel = event.currentTarget;
-  const button = toolButtons.find((item) => item.dataset.toolPanel === panel.id);
-  closeToolPanels();
-  button?.focus();
+function handlePageHashChange() {
+  navigateToPage(getPageFromHash(), { updateHash: false });
 }
 
-function toggleToolPanel(button) {
-  const shouldOpen = button.getAttribute("aria-expanded") !== "true";
-  const panel = document.getElementById(button.dataset.toolPanel);
-  closeToolPanels();
+function getPageFromHash() {
+  const page = window.location.hash.slice(1).toLowerCase();
+  return validPages.has(page) ? page : "dashboard";
+}
 
-  if (shouldOpen && panel) {
-    panel.hidden = false;
-    button.setAttribute("aria-expanded", "true");
-    button.classList.add("is-active");
+function navigateToPage(page, { updateHash = true } = {}) {
+  const nextPage = validPages.has(page) ? page : "dashboard";
+  pageButtons.forEach((button) => {
+    const isActive = button.dataset.pageTarget === nextPage;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+    if (isActive) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  pageWorkspaces.forEach((workspace) => {
+    workspace.hidden = workspace.dataset.page !== nextPage;
+  });
+
+  if (updateHash && window.location.hash !== `#${nextPage}`) {
+    window.history.pushState({}, "", `#${nextPage}`);
   }
+
+  return nextPage;
 }
 
-function closeToolPanels() {
-  toolButtons.forEach((button) => {
-    button.setAttribute("aria-expanded", "false");
-    button.classList.remove("is-active");
-  });
-  toolPanels.forEach((panel) => {
-    panel.hidden = true;
-  });
-}
+window.FreshRouteNavigation = { goTo: navigateToPage };
 
 function handleReceivingInput() {
   updateReceivingCalculation();
@@ -931,6 +931,7 @@ function handleStatusFilterChange() {
 
 function activateSummaryCard(event) {
   const selectedCard = event.currentTarget;
+  navigateToPage("inventory");
   statusFilter.value = selectedCard.dataset.statusFilter;
   productSearch.value = "";
   currentPage = 1;

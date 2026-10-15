@@ -10,7 +10,7 @@
 </head>
 
 <body>
-  <a class="skip-link" href="#inventory-table">Skip to inventory</a>
+  <a class="skip-link" href="#page-content">Skip to page content</a>
 
   <main class="dashboard-shell">
     <header class="page-header">
@@ -31,27 +31,119 @@
       </div>
     </header>
 
-    <nav class="dashboard-navigation" aria-label="Dashboard tools">
-      <button class="nav-tool-button" id="receiving-button" type="button" aria-expanded="false" aria-controls="receiving-panel" data-tool-panel="receiving-panel">
+    <nav class="dashboard-navigation" aria-label="FreshRoute workspaces" role="tablist">
+      <button class="nav-tool-button is-active" id="dashboard-button" type="button" role="tab" aria-selected="true" aria-controls="dashboard-page" data-page-target="dashboard">
+        <span aria-hidden="true">⌂</span>
+        Dashboard
+      </button>
+      <button class="nav-tool-button" id="inventory-button" type="button" role="tab" aria-selected="false" aria-controls="inventory-page" data-page-target="inventory">
+        <span aria-hidden="true">▦</span>
+        Inventory
+      </button>
+      <button class="nav-tool-button" id="receiving-button" type="button" role="tab" aria-selected="false" aria-controls="receiving-page" data-page-target="receiving">
         <span aria-hidden="true">▤</span>
         Receive Delivery
       </button>
-      <button class="nav-tool-button" id="import-inventory-button" type="button" aria-expanded="false" aria-controls="import-inventory-panel" data-tool-panel="import-inventory-panel">
-        <span aria-hidden="true">⇧</span>
-        Import Inventory
+      <button class="nav-tool-button" id="reconciliation-button" type="button" role="tab" aria-selected="false" aria-controls="reconciliation-page" data-page-target="reconciliation">
+        <span aria-hidden="true">✓</span>
+        Reconciliation
       </button>
-      <button class="nav-tool-button" id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel" data-tool-panel="settings-panel">
+      <button class="nav-tool-button" id="import-data-button" type="button" role="tab" aria-selected="false" aria-controls="import-data-page" data-page-target="import-data">
+        <span aria-hidden="true">⇧</span>
+        Import Data
+      </button>
+      <button class="nav-tool-button" id="settings-button" type="button" role="tab" aria-selected="false" aria-controls="settings-page" data-page-target="settings">
         <span aria-hidden="true">⚙</span>
         Settings
       </button>
-      <button class="nav-tool-button" id="help-button" type="button" aria-expanded="false" aria-controls="help-panel" data-tool-panel="help-panel">
-        <span aria-hidden="true">?</span>
-        Help
-      </button>
     </nav>
 
-    <div class="tool-panels">
-      <section id="receiving-panel" class="tool-panel receiving-panel" aria-labelledby="receiving-title" hidden>
+    <div id="page-content" class="page-workspaces">
+      <section id="dashboard-page" class="page-workspace dashboard-page" data-page="dashboard" role="tabpanel" aria-labelledby="dashboard-button">
+        <div class="workspace-heading">
+          <div>
+            <p class="eyebrow">FreshRoute overview</p>
+            <h2>Dashboard</h2>
+            <p>Review the latest inventory signals and jump into the work that needs attention.</p>
+          </div>
+        </div>
+
+        <section class="summary-grid" aria-label="Inventory summary">
+          <article class="summary-card metric-skus is-active" role="button" tabindex="0" data-status-filter="all" aria-controls="inventory-table" aria-pressed="true">
+            <span class="metric-icon" aria-hidden="true">▦</span>
+            <div>
+              <p>Unique SKUs</p>
+              <strong id="unique-sku-count">—</strong>
+              <small>Latest snapshot per ID + brand</small>
+            </div>
+          </article>
+
+          <article class="summary-card metric-restock" role="button" tabindex="0" data-status-filter="needs-restock" aria-controls="inventory-table" aria-pressed="false">
+            <span class="metric-icon" aria-hidden="true">!</span>
+            <div>
+              <p>Needs Restock</p>
+              <strong id="needs-restock-count">—</strong>
+              <small>Low stock + reorder soon</small>
+            </div>
+          </article>
+
+          <article class="summary-card metric-expiry" role="button" tabindex="0" data-status-filter="expiring-soon" aria-controls="inventory-table" aria-pressed="false">
+            <span class="metric-icon" aria-hidden="true">◷</span>
+            <div>
+              <p>Expiring Soon</p>
+              <strong id="expiring-soon-count">—</strong>
+              <small>Expires today or within 14 days</small>
+            </div>
+          </article>
+
+          <article class="summary-card metric-expired" role="button" tabindex="0" data-status-filter="expired" aria-controls="inventory-table" aria-pressed="false">
+            <span class="metric-icon" aria-hidden="true">×</span>
+            <div>
+              <p>Expired</p>
+              <strong id="expired-count">—</strong>
+              <small>Flag these SKUs for removal</small>
+            </div>
+          </article>
+
+          <article class="summary-card metric-healthy" role="button" tabindex="0" data-status-filter="healthy-stock" aria-controls="inventory-table" aria-pressed="false">
+            <span class="metric-icon" aria-hidden="true">✓</span>
+            <div>
+              <p>Healthy Stock</p>
+              <strong id="healthy-stock-count">—</strong>
+              <small>Stocked with no expiry warning</small>
+            </div>
+          </article>
+
+          <article class="summary-card metric-requests" role="button" tabindex="0" data-status-filter="requests-sent" aria-controls="inventory-table" aria-pressed="false">
+            <span class="metric-icon" aria-hidden="true">↗</span>
+            <div>
+              <p>Requests Saved</p>
+              <strong id="requests-sent-count">0</strong>
+              <small>Local actions, not placed orders</small>
+            </div>
+          </article>
+        </section>
+
+        <section class="active-inventory-progress" aria-labelledby="active-inventory-title">
+          <div class="active-inventory-heading">
+            <p id="active-inventory-title">Active Inventory</p>
+            <strong id="active-inventory-summary">0 of 0 active SKUs remaining · 0 flagged for removal</strong>
+          </div>
+          <progress id="active-inventory-bar" value="0" max="1" aria-describedby="active-inventory-summary">0%</progress>
+        </section>
+
+        <section id="critical-alert" class="critical-alert" aria-labelledby="critical-alert-title" hidden>
+          <span class="alert-icon" aria-hidden="true">!</span>
+          <div class="alert-copy">
+            <p class="alert-kicker">Critical expiry alert</p>
+            <h2 id="critical-alert-title">Immediate attention required</h2>
+            <p id="critical-alert-summary"></p>
+            <ul id="critical-products" class="critical-products"></ul>
+          </div>
+        </section>
+      </section>
+
+      <section id="receiving-page" class="page-workspace tool-panel receiving-panel" data-page="receiving" aria-labelledby="receiving-title" hidden>
         <div class="receiving-heading">
           <div class="tool-panel-heading">
             <div class="data-source-title-row">
@@ -193,6 +285,17 @@
           <p class="receiving-formula-note">Usable units = total units − units inside damaged boxes − damaged individual units.</p>
         </section>
 
+      </section>
+
+      <section id="reconciliation-page" class="page-workspace tool-panel reconciliation-page" data-page="reconciliation" aria-labelledby="reconciliation-page-title" role="tabpanel" hidden>
+        <div class="workspace-heading">
+          <div>
+            <p class="eyebrow">FreshRoute Pro workflow</p>
+            <h2 id="reconciliation-page-title">Reconciliation</h2>
+            <p>Review saved deliveries, approve accepted quantities, or record a traceable correction.</p>
+          </div>
+        </div>
+
         <section class="saved-receiving" aria-labelledby="saved-receiving-title">
           <div class="saved-receiving-heading">
             <h3 id="saved-receiving-title">Saved receiving records</h3>
@@ -218,7 +321,7 @@
         </section>
       </section>
 
-      <section id="import-inventory-panel" class="tool-panel data-source-panel" aria-labelledby="data-source-title" hidden>
+      <section id="import-data-page" class="page-workspace data-source-panel" data-page="import-data" aria-labelledby="data-source-title" role="tabpanel" hidden>
         <div class="data-source-copy">
           <div class="data-source-title-row">
             <p class="eyebrow">Data source</p>
@@ -251,7 +354,7 @@
         </form>
       </section>
 
-      <section id="settings-panel" class="tool-panel" aria-labelledby="settings-title" hidden>
+      <section id="settings-page" class="page-workspace tool-panel settings-page" data-page="settings" aria-labelledby="settings-title" role="tabpanel" hidden>
         <div class="tool-panel-heading">
           <p class="eyebrow">Dashboard preferences</p>
           <h2 id="settings-title">Settings</h2>
@@ -267,98 +370,24 @@
             <span id="theme-label">Light mode</span>
           </button>
         </div>
-      </section>
 
-      <section id="help-panel" class="tool-panel" aria-labelledby="help-title" hidden>
-        <div class="tool-panel-heading">
+        <section class="settings-help" aria-labelledby="help-title">
+          <div class="tool-panel-heading">
           <p class="eyebrow">FreshRoute guide</p>
           <h2 id="help-title">Help</h2>
           <p>Use the dashboard to find inventory that needs attention.</p>
-        </div>
-        <ol class="help-list">
-          <li><strong>Review alerts.</strong> Select a summary card to filter the inventory table.</li>
-          <li><strong>Find an item.</strong> Use search, status filters, and pagination to narrow the results.</li>
-          <li><strong>Use your data.</strong> Open Import Inventory, choose a CSV, and confirm the matched columns.</li>
-          <li><strong>Save local actions.</strong> Restock requests and removal flags stay in this browser; they are not submitted orders.</li>
-        </ol>
+          </div>
+          <ol class="help-list">
+            <li><strong>Review alerts.</strong> Select a summary card to filter the inventory table.</li>
+            <li><strong>Find an item.</strong> Use search, status filters, and pagination to narrow the results.</li>
+            <li><strong>Use your data.</strong> Open Import Data, choose a CSV, and confirm the matched columns.</li>
+            <li><strong>Save local actions.</strong> Restock requests and removal flags stay in this browser; they are not submitted orders.</li>
+          </ol>
+        </section>
       </section>
-    </div>
 
-    <section class="summary-grid" aria-label="Inventory summary">
-      <article class="summary-card metric-skus is-active" role="button" tabindex="0" data-status-filter="all" aria-controls="inventory-table" aria-pressed="true">
-        <span class="metric-icon" aria-hidden="true">▦</span>
-        <div>
-          <p>Unique SKUs</p>
-          <strong id="unique-sku-count">—</strong>
-          <small>Latest snapshot per ID + brand</small>
-        </div>
-      </article>
-
-      <article class="summary-card metric-restock" role="button" tabindex="0" data-status-filter="needs-restock" aria-controls="inventory-table" aria-pressed="false">
-        <span class="metric-icon" aria-hidden="true">!</span>
-        <div>
-          <p>Needs Restock</p>
-          <strong id="needs-restock-count">—</strong>
-          <small>Low stock + reorder soon</small>
-        </div>
-      </article>
-
-      <article class="summary-card metric-expiry" role="button" tabindex="0" data-status-filter="expiring-soon" aria-controls="inventory-table" aria-pressed="false">
-        <span class="metric-icon" aria-hidden="true">◷</span>
-        <div>
-          <p>Expiring Soon</p>
-          <strong id="expiring-soon-count">—</strong>
-          <small>Expires today or within 14 days</small>
-        </div>
-      </article>
-
-      <article class="summary-card metric-expired" role="button" tabindex="0" data-status-filter="expired" aria-controls="inventory-table" aria-pressed="false">
-        <span class="metric-icon" aria-hidden="true">×</span>
-        <div>
-          <p>Expired</p>
-          <strong id="expired-count">—</strong>
-          <small>Flag these SKUs for removal</small>
-        </div>
-      </article>
-
-      <article class="summary-card metric-healthy" role="button" tabindex="0" data-status-filter="healthy-stock" aria-controls="inventory-table" aria-pressed="false">
-        <span class="metric-icon" aria-hidden="true">✓</span>
-        <div>
-          <p>Healthy Stock</p>
-          <strong id="healthy-stock-count">—</strong>
-          <small>Stocked with no expiry warning</small>
-        </div>
-      </article>
-
-      <article class="summary-card metric-requests" role="button" tabindex="0" data-status-filter="requests-sent" aria-controls="inventory-table" aria-pressed="false">
-        <span class="metric-icon" aria-hidden="true">↗</span>
-        <div>
-          <p>Requests Saved</p>
-          <strong id="requests-sent-count">0</strong>
-          <small>Local actions, not placed orders</small>
-        </div>
-      </article>
-    </section>
-
-    <section class="active-inventory-progress" aria-labelledby="active-inventory-title">
-      <div class="active-inventory-heading">
-        <p id="active-inventory-title">Active Inventory</p>
-        <strong id="active-inventory-summary">0 of 0 active SKUs remaining · 0 flagged for removal</strong>
-      </div>
-      <progress id="active-inventory-bar" value="0" max="1" aria-describedby="active-inventory-summary">0%</progress>
-    </section>
-
-    <section id="critical-alert" class="critical-alert" aria-labelledby="critical-alert-title" hidden>
-      <span class="alert-icon" aria-hidden="true">!</span>
-      <div class="alert-copy">
-        <p class="alert-kicker">Critical expiry alert</p>
-        <h2 id="critical-alert-title">Immediate attention required</h2>
-        <p id="critical-alert-summary"></p>
-        <ul id="critical-products" class="critical-products"></ul>
-      </div>
-    </section>
-
-    <section class="inventory-panel" aria-labelledby="inventory-title">
+    <section id="inventory-page" class="page-workspace inventory-page" data-page="inventory" role="tabpanel" aria-labelledby="inventory-button" hidden>
+      <section class="inventory-panel" aria-labelledby="inventory-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Live priority queue</p>
@@ -416,7 +445,9 @@
       </div>
 
       <nav id="pagination-bottom" class="pagination" aria-label="Inventory pagination below table"></nav>
+      </section>
     </section>
+    </div>
   </main>
 
   <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top" hidden>↑</button>
