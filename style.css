@@ -684,6 +684,10 @@ h1 {
   color: var(--danger);
 }
 
+.record-state.new_product_review {
+  color: var(--orange);
+}
+
 .reconciliation-record-heading,
 .reconciliation-totals,
 .decision-actions {
@@ -750,6 +754,7 @@ h1 {
 
 .supervisor-decision-form,
 .inventory-correction-form,
+.new-product-review-form,
 .decision-summary,
 .correction-history {
   margin-top: 14px;
@@ -761,9 +766,46 @@ h1 {
 
 .supervisor-decision-form h4,
 .inventory-correction-form h4,
+.new-product-review-form h5,
 .correction-history h4 {
   margin: 0 0 12px;
   font-size: 0.9rem;
+}
+
+.new-product-review {
+  margin-top: 16px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--orange-glow) 45%, var(--panel-soft));
+  border: 1px solid var(--orange);
+  border-radius: 11px;
+}
+
+.new-product-review > p {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.new-product-review-form {
+  margin-top: 12px;
+}
+
+.new-product-review-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.new-product-review-reason {
+  grid-column: span 2;
+}
+
+.correction-decision {
+  border-color: var(--orange);
+}
+
+.correction-decision > strong {
+  color: var(--orange);
 }
 
 .decision-fields,
@@ -1780,6 +1822,10 @@ td small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .new-product-review-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .data-source-panel {
     grid-template-columns: 1fr;
   }
@@ -1863,8 +1909,13 @@ td small {
 
   .reconciliation-totals,
   .decision-fields,
-  .correction-fields {
+  .correction-fields,
+  .new-product-review-fields {
     grid-template-columns: 1fr;
+  }
+
+  .new-product-review-reason {
+    grid-column: auto;
   }
 
   .reconciliation-record-heading,

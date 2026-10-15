@@ -262,3 +262,69 @@ test("approval is blocked when the delivery belongs to another source", () => {
   assert.equal(result.valid, false);
   assert.match(result.errors.join(" "), /different inventory source/);
 });
+
+test("unknown SKUs are routed to new-product review and duplicate unknown lines are blocked", () => {
+  const record = delivery({
+    items: [
+      { sku: "NEW-1", productName: "New Product", brand: "New Brand", totalUnits: 10, totalDamagedUnits: 2, usableUnits: 8 },
+      { sku: "new-1", productName: "New Product", brand: "New Brand", totalUnits: 4, totalDamagedUnits: 0, usableUnits: 4 }
+    ]
+  });
+  const result = reconciliation.prepareApproval({ record, inventory, sourceKey: "demo", ledger: [] });
+  assert.equal(result.valid, false);
+  assert.equal(result.unknownItems.length, 1);
+  assert.match(result.errors.join(" "), /appears more than once/);
+});
+
+test("new-product approval validates thresholds and posts accepted usable quantity once", () => {
+  const record = delivery({
+    supplier: "New Supplier",
+    items: [{ sku: "NEW-1", productName: "New Product", brand: "New Brand", totalUnits: 10, totalDamagedUnits: 2, usableUnits: 8 }]
+  });
+  const invalid = reconciliation.createNewProductDecision({
+    record,
+    item: record.items[0],
+    inventory,
+    sourceKey: "demo",
+    decision: "approve",
+    actedBy: "Supervisor",
+    fields: { lowStockThreshold: "10", reorderThreshold: "5", reason: "Reviewed" }
+  });
+  assert.equal(invalid.valid, false);
+  assert.match(invalid.errors.join(" "), /Reorder threshold/);
+
+  const result = reconciliation.createNewProductDecision({
+    id: "new-product-review-1",
+    record,
+    item: record.items[0],
+    inventory,
+    sourceKey: "demo",
+    decision: "approve",
+    actedBy: "Supervisor",
+    fields: { lowStockThreshold: "3", reorderThreshold: "5", reason: "SKU, brand, and quantity verified." }
+  });
+  assert.equal(result.valid, true);
+  const updated = reconciliation.applyLedgerToInventory(inventory, [result.entry, result.entry], "demo");
+  assert.equal(updated.length, 2);
+  assert.equal(updated[1].productId, "NEW-1");
+  assert.equal(updated[1].currentStock, 8);
+});
+
+test("new-product rejection records a reason without inventory changes", () => {
+  const record = delivery({
+    supplier: "Unknown Supplier",
+    items: [{ sku: "NEW-REJECT", productName: "Rejected Product", brand: "Unknown", totalUnits: 5, totalDamagedUnits: 0, usableUnits: 5 }]
+  });
+  const result = reconciliation.createNewProductDecision({
+    record,
+    item: record.items[0],
+    inventory,
+    sourceKey: "demo",
+    decision: "reject",
+    actedBy: "Supervisor",
+    fields: { reason: "Duplicate supplier catalog entry." }
+  });
+  assert.equal(result.valid, true);
+  assert.equal(result.entry.decision, "rejected");
+  assert.equal(reconciliation.applyLedgerToInventory(inventory, [result.entry], "demo").length, 1);
+});

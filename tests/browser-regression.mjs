@@ -396,6 +396,81 @@ async function run() {
     assert.match(await cdp.evaluate('document.querySelector(".rejected-decision").textContent'), /inventory unchanged/i);
     pass("rejected delivery records a reason and leaves inventory unchanged");
 
+    await cdp.evaluate(`(() => {
+      document.getElementById("receiving-button").click();
+      const values = {
+        "delivery-supplier": "Unknown SKU Supplier",
+        "receiving-sku": "UNKNOWN-BROWSER-1",
+        "receiving-product-name": "New Browser Product",
+        "receiving-brand": "New Browser Brand",
+        "boxes-per-row": "2",
+        "receiving-layers": "1",
+        "units-per-box": "5",
+        "damaged-boxes": "0",
+        "damaged-units": "0"
+      };
+      Object.entries(values).forEach(([id, value]) => {
+        const field = document.getElementById(id);
+        field.value = value;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      document.getElementById("receiving-form").requestSubmit();
+      document.getElementById("save-receiving-record").click();
+      document.getElementById("reconciliation-button").click();
+      document.querySelector("[data-review-record]").click();
+    })()`);
+    assert.equal(await cdp.evaluate('Boolean(document.querySelector("[data-new-product-review]"))'), true);
+    assert.match(await cdp.evaluate('document.querySelector(".prototype-warning").textContent'), /DEMONSTRATION MODE/);
+    await cdp.evaluate(`(() => {
+      const form = document.querySelector("[data-new-product-review]");
+      form.elements.actedBy.value = "Demo Supervisor";
+      form.elements.reason.value = "Thresholds need correction before approval.";
+      form.elements.lowStockThreshold.value = "10";
+      form.elements.reorderThreshold.value = "5";
+      form.querySelector('[data-new-product-decision="approve"]').click();
+    })()`);
+    assert.match(await cdp.evaluate('document.getElementById("reconciliation-feedback").textContent'), /Reorder threshold/);
+    await cdp.evaluate(`(() => {
+      const form = document.querySelector("[data-new-product-review]");
+      form.elements.reason.value = "Verified SKU, identity, measurement, quantity, and thresholds.";
+      form.elements.reorderThreshold.value = "12";
+      form.querySelector('[data-new-product-decision="approve"]').click();
+    })()`);
+    assert.match(await cdp.evaluate('document.getElementById("reconciliation-feedback").textContent'), /approved in demonstration mode/i);
+    assert.equal(await cdp.evaluate('inventoryData.filter((item) => item.productId === "UNKNOWN-BROWSER-1").length'), 1);
+    assert.equal(await cdp.evaluate('JSON.parse(localStorage.getItem("freshroute-reconciliation-ledger")).filter((entry) => entry.type === "new_product_review" && entry.decision === "approved").length'), 1);
+    pass("unknown SKU receives a dedicated demo review, validates thresholds, and posts accepted quantity once");
+
+    await cdp.evaluate(`(() => {
+      document.getElementById("receiving-button").click();
+      const values = {
+        "delivery-supplier": "Correction Supplier",
+        "receiving-sku": "UNKNOWN-BROWSER-2",
+        "receiving-product-name": "Needs Correction",
+        "receiving-brand": "Correction Brand",
+        "boxes-per-row": "1",
+        "receiving-layers": "1",
+        "units-per-box": "3",
+        "damaged-boxes": "0",
+        "damaged-units": "0"
+      };
+      Object.entries(values).forEach(([id, value]) => {
+        const field = document.getElementById(id);
+        field.value = value;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      document.getElementById("receiving-form").requestSubmit();
+      document.getElementById("save-receiving-record").click();
+      document.getElementById("reconciliation-button").click();
+      document.querySelector("[data-review-record]").click();
+      const form = document.querySelector("[data-new-product-review]");
+      form.elements.actedBy.value = "Demo Supervisor";
+      form.elements.reason.value = "Product name must be corrected.";
+      form.querySelector('[data-new-product-decision="request_correction"]').click();
+    })()`);
+    assert.match(await cdp.evaluate('document.querySelector(".correction-decision").textContent'), /Corrections requested/);
+    pass("new-product review can request corrections while preserving the delivery");
+
     await cdp.evaluate('document.getElementById("import-data-button").click()');
     const documentNode = await cdp.send("DOM.getDocument");
     const inputNode = await cdp.send("DOM.querySelector", {
@@ -438,14 +513,14 @@ async function run() {
       document.getElementById("status-filter").dispatchEvent(new Event("change", { bubbles: true }));
       document.querySelector('#pagination-top [data-page="2"]').click();
     })()`);
-    assert.match(await cdp.evaluate('document.querySelector("#pagination-top .page-indicator").textContent'), /Page 2 of 4/);
-    assert.match(await cdp.evaluate('document.querySelector("#pagination-bottom .page-indicator").textContent'), /Page 2 of 4/);
+    assert.match(await cdp.evaluate('document.querySelector("#pagination-top .page-indicator").textContent'), /Page 2 of 5/);
+    assert.match(await cdp.evaluate('document.querySelector("#pagination-bottom .page-indicator").textContent'), /Page 2 of 5/);
     await cdp.evaluate(`(() => {
       const form = document.querySelector("#pagination-bottom .jump-form");
       form.elements.page.value = "4";
       form.requestSubmit();
     })()`);
-    assert.match(await cdp.evaluate('document.querySelector("#pagination-top .page-indicator").textContent'), /Page 4 of 4/);
+    assert.match(await cdp.evaluate('document.querySelector("#pagination-top .page-indicator").textContent'), /Page 4 of 5/);
     pass("top and bottom pagination plus page jump still work");
 
     const originalTheme = await cdp.evaluate('document.documentElement.dataset.theme');

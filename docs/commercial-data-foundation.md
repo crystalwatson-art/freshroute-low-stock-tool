@@ -30,6 +30,12 @@ Business
         └── Immutable inventory movements
 ```
 
+An unfamiliar SKU is stored as a `new_product_reviews` record linked to the
+delivery. It is not discarded and it does not bypass the existing product
+foreign keys. A trusted database function locks the review, verifies the
+authenticated tenant role and product identity, creates the product and its
+base-unit rule, and posts only the accepted quantity in one transaction.
+
 The current balance is the sum of immutable normalized movements. There is no independently editable stock total that can drift away from its history.
 
 ## Roles
@@ -45,6 +51,11 @@ The current balance is the sum of immutable normalized movements. There is no in
 | Invite users and manage memberships | No | No | Yes |
 
 The local adapter enforces this matrix for tests. The SQL policies enforce it at the database boundary. Interface visibility alone is not treated as permission.
+
+New-product approval uses the same server-side Supervisor/Administrator
+boundary. A browser-entered name is never used as authorization. The static
+classroom dashboard remains explicitly demonstration-only because it has no
+identity provider or persistent commercial connection.
 
 ## Units and conversions
 

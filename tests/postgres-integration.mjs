@@ -10,7 +10,8 @@ const ROOT = normalize(join(dirname(fileURLToPath(import.meta.url)), ".."));
 const MIGRATIONS = [
   join(ROOT, "database/migrations/001_commercial_foundation.sql"),
   join(ROOT, "database/migrations/002_access_control_and_approval.sql"),
-  join(ROOT, "database/migrations/003_warehouse_locations_and_transfers.sql")
+  join(ROOT, "database/migrations/003_warehouse_locations_and_transfers.sql"),
+  join(ROOT, "database/migrations/004_new_product_review.sql")
 ];
 const DEFAULT_POSTGRES_BINS = [
   process.env.POSTGRES_BIN,
@@ -134,7 +135,7 @@ async function run() {
   for (const migration of MIGRATIONS) {
     command(join(postgresBin, "psql"), psqlArgs(["-f", migration]));
   }
-  pass("all three migrations apply to a new PostgreSQL cluster");
+  pass("all four migrations apply to a new PostgreSQL cluster");
 
   runSql(String.raw`
 insert into businesses (id, name) values
@@ -805,6 +806,193 @@ do $$ begin
 end $$;
   `);
   pass("transfers and located corrections share exact source locks");
+
+  runSql(String.raw`
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+insert into new_product_reviews (
+  id, business_id, delivery_id, source_item_key, sku, product_name, brand, supplier,
+  measurement_unit, received_quantity, damaged_quantity, accepted_quantity,
+  low_stock_threshold, reorder_threshold, requested_by
+) values
+  ('90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
+   '50000000-0000-0000-0000-000000000001', 'unknown-a', 'NEW-A', 'New A', 'Fresh Brand', 'Test Supplier',
+   'each', 10, 2, 8, 3, 5, '20000000-0000-0000-0000-000000000003'),
+  ('90000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001',
+   '50000000-0000-0000-0000-000000000001', 'unknown-rejected', 'NEW-REJECT', 'Rejected Product', 'Reject Brand', 'Test Supplier',
+   'each', 5, 0, 5, 1, 2, '20000000-0000-0000-0000-000000000003'),
+  ('90000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001',
+   '50000000-0000-0000-0000-000000000001', 'unknown-concurrent', 'NEW-CONCURRENT', 'Concurrent Product', 'Concurrent Brand', 'Test Supplier',
+   'each', 6, 1, 5, 1, 2, '20000000-0000-0000-0000-000000000003'),
+  ('90000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001',
+   '50000000-0000-0000-0000-000000000001', 'unknown-failure', 'NEW-FAIL', 'Failed Product', 'Failure Brand', 'Test Supplier',
+   'each', 4, 0, 4, 1, 2, '20000000-0000-0000-0000-000000000003');
+
+do $$
+declare blocked boolean := false; message text;
+begin
+  begin
+    insert into new_product_reviews (
+      business_id, delivery_id, source_item_key, sku, product_name, brand, supplier,
+      measurement_unit, received_quantity, damaged_quantity, accepted_quantity,
+      low_stock_threshold, reorder_threshold, requested_by
+    ) values (
+      '10000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001',
+      'unknown-a', 'DUPLICATE', 'Duplicate', 'Duplicate Brand', 'Test Supplier',
+      'each', 1, 0, 1, 0, 0, '20000000-0000-0000-0000-000000000003'
+    );
+  exception when unique_violation then blocked := true;
+  end;
+  if not blocked then raise exception 'Duplicate unknown delivery line was accepted'; end if;
+
+  blocked := false;
+  begin
+    insert into new_product_reviews (
+      business_id, delivery_id, source_item_key, sku, product_name, brand, supplier,
+      measurement_unit, received_quantity, damaged_quantity, accepted_quantity,
+      low_stock_threshold, reorder_threshold, requested_by
+    ) values (
+      '10000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001',
+      'invalid-quantity', 'INVALID', 'Invalid', 'Invalid Brand', 'Test Supplier',
+      'each', 1, 2, 1, 0, 0, '20000000-0000-0000-0000-000000000003'
+    );
+  exception when check_violation then blocked := true;
+  end;
+  if not blocked then raise exception 'Invalid accepted quantity was accepted'; end if;
+end;
+$$;
+reset role;
+  `);
+  pass("unknown delivery lines persist with duplicate and invalid quantity checks");
+
+  runSql(String.raw`
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+do $$
+declare blocked boolean := false;
+begin
+  begin
+    perform review_new_product('90000000-0000-0000-0000-000000000001', 'approve', 'Typed name only', 'new-product-unauthorized');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Worker approved a new product'; end if;
+end;
+$$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);
+select review_new_product('90000000-0000-0000-0000-000000000001', 'request_correction', 'Brand must match the supplier catalog.');
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+select resubmit_new_product_review(
+  '90000000-0000-0000-0000-000000000001', 'NEW-A', 'New A Corrected', 'Fresh Brand', 'each',
+  10, 2, 8, 3, 5, 'Corrected product identity.'
+);
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);
+select review_new_product('90000000-0000-0000-0000-000000000001', 'approve', 'Verified by authenticated Supervisor.', 'new-product-a-0001');
+select review_new_product('90000000-0000-0000-0000-000000000001', 'approve', 'Retry with the same key.', 'new-product-a-0001');
+select review_new_product('90000000-0000-0000-0000-000000000003', 'reject', 'Supplier could not verify this catalog item.');
+reset role;
+
+do $$
+declare blocked boolean := false; message text;
+begin
+  begin
+    update new_product_review_events set reason = 'tampered'
+    where review_id = '90000000-0000-0000-0000-000000000001';
+  exception when others then blocked := true; message := sqlerrm;
+  end;
+  if not blocked or position('append-only' in message) = 0 then raise exception 'New product audit history was mutable: %', message; end if;
+  if (select count(*) from products where sku = 'NEW-A') <> 1 then raise exception 'New product was not created exactly once'; end if;
+  if (select count(*) from inventory_transactions where idempotency_key = 'new-product-a-0001') <> 1 then raise exception 'New product posting was duplicated'; end if;
+  if (select quantity from inventory_balances where product_id = (select id from products where sku = 'NEW-A')) <> 8 then raise exception 'Only accepted usable quantity was posted'; end if;
+  if (select status from new_product_reviews where id = '90000000-0000-0000-0000-000000000001') <> 'approved' then raise exception 'Corrected new product was not approved'; end if;
+  if (select count(*) from new_product_review_events where review_id = '90000000-0000-0000-0000-000000000001' and event_type in ('requested', 'correction_requested', 'resubmitted', 'approved')) <> 4 then raise exception 'New product audit trail is incomplete'; end if;
+  if (select status from new_product_reviews where id = '90000000-0000-0000-0000-000000000003') <> 'rejected' then raise exception 'Rejected new product did not retain status'; end if;
+  if exists (select 1 from products where sku = 'NEW-REJECT') then raise exception 'Rejected new product was created'; end if;
+end;
+$$;
+  `);
+  pass("authenticated new-product correction, approval, rejection, audit, and idempotency work");
+
+  runSql(String.raw`
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000005', false);
+do $$
+declare blocked boolean := false;
+begin
+  if (select count(*) from new_product_reviews) <> 0 then raise exception 'Business B saw Business A new-product reviews'; end if;
+  begin
+    perform review_new_product('90000000-0000-0000-0000-000000000004', 'approve', 'Cross-tenant attempt.', 'cross-tenant-new-product');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Cross-tenant new-product approval was accepted'; end if;
+end;
+$$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+insert into new_product_reviews (
+  id, business_id, delivery_id, source_item_key, sku, product_name, brand, supplier,
+  measurement_unit, received_quantity, damaged_quantity, accepted_quantity,
+  low_stock_threshold, reorder_threshold, requested_by
+) values (
+  '90000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001',
+  '50000000-0000-0000-0000-000000000001', 'unknown-duplicate-product', 'NEW-A', 'Duplicate Product', 'Fresh Brand', 'Test Supplier',
+  'each', 4, 0, 4, 1, 2, '20000000-0000-0000-0000-000000000003'
+);
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);
+do $$
+declare blocked boolean := false;
+begin
+  begin
+    perform review_new_product('90000000-0000-0000-0000-000000000006', 'approve', 'Duplicate product attempt.', 'duplicate-product-review');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Duplicate product approval was accepted'; end if;
+end;
+$$;
+reset role;
+  `);
+  pass("cross-tenant access is denied and duplicate product creation is blocked");
+
+  const newProductSession = "set role authenticated; select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);";
+  const [newProductFirst, newProductSecond] = await Promise.all([
+    runPsqlAsync(`${newProductSession} select review_new_product('90000000-0000-0000-0000-000000000004', 'approve', 'Concurrent review one.', 'new-product-concurrent-1');`),
+    runPsqlAsync(`${newProductSession} select review_new_product('90000000-0000-0000-0000-000000000004', 'approve', 'Concurrent review two.', 'new-product-concurrent-2');`)
+  ]);
+  assert.equal(
+    [newProductFirst.status, newProductSecond.status].filter((status) => status === 0).length,
+    1,
+    `Exactly one concurrent new-product approval should succeed.\n${newProductFirst.stdout}${newProductFirst.stderr}${newProductSecond.stdout}${newProductSecond.stderr}`
+  );
+  runSql(String.raw`
+do $$
+declare blocked boolean := false;
+begin
+  if (select count(*) from products where sku = 'NEW-CONCURRENT') <> 1 then raise exception 'Concurrent approval created duplicate products'; end if;
+  if (select count(*) from inventory_transactions where request_id = (select id from inventory_adjustment_requests where source_reference like 'new-product-review:90000000-0000-0000-0000-000000000004')) <> 1 then raise exception 'Concurrent approval created duplicate transactions'; end if;
+  begin
+    perform review_new_product('90000000-0000-0000-0000-000000000005', 'approve', 'Failure should roll back.', 'admin-key-0001');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Transaction failure did not fail'; end if;
+  if exists (select 1 from products where sku = 'NEW-FAIL') then raise exception 'Failed new-product transaction left a product'; end if;
+  if (select status from new_product_reviews where id = '90000000-0000-0000-0000-000000000005') <> 'pending' then raise exception 'Failed new-product transaction changed review status'; end if;
+end;
+$$;
+  `);
+  pass("concurrent new-product approvals serialize and failed posting rolls back atomically");
 
   console.log(`\n${checks} PostgreSQL integration checks passed.`);
 }
