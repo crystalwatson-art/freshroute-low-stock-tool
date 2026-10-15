@@ -417,6 +417,23 @@ h1 {
   border-radius: 9px;
 }
 
+.receiving-field input[type="number"] {
+  min-width: 0;
+  min-height: 48px;
+  padding-right: 38px;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.receiving-field input[type="number"]::-webkit-inner-spin-button,
+.receiving-field input[type="number"]::-webkit-outer-spin-button {
+  width: 1.35em;
+  height: 1.35em;
+  margin: 0 2px;
+  opacity: 1;
+  cursor: pointer;
+}
+
 .receiving-field textarea {
   min-height: 98px;
   resize: vertical;
@@ -1344,12 +1361,22 @@ h1 {
 }
 
 .critical-products .more-critical {
-  min-width: auto;
+  display: flex;
+  align-items: center;
   justify-content: center;
+  min-width: auto;
+  min-height: 42px;
+  padding: 7px 10px;
   color: #fff;
+  font: inherit;
   font-weight: 800;
   background: rgba(255, 148, 24, 0.24);
   border-color: rgba(255, 174, 77, 0.5);
+  cursor: pointer;
+}
+
+.critical-products .more-critical:hover {
+  background: rgba(255, 148, 24, 0.4);
 }
 
 .inventory-panel {

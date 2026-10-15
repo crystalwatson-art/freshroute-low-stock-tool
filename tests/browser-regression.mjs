@@ -172,6 +172,27 @@ async function run() {
     );
     pass("dashboard loads the 40-SKU demo inventory");
 
+    const criticalAlert = await cdp.evaluate(`(() => {
+      const criticalCount = inventoryData.filter((item) => item.daysToExpiry !== null && item.daysToExpiry <= 3).length;
+      const more = document.querySelector("[data-critical-expiry-more]");
+      return {
+        criticalCount,
+        moreText: more?.textContent.trim(),
+        moreAccessibleName: more?.getAttribute("aria-label")
+      };
+    })()`);
+    assert.ok(criticalAlert.criticalCount > 3);
+    assert.equal(criticalAlert.moreText, `+ ${criticalAlert.criticalCount - 3} more`);
+    assert.match(criticalAlert.moreAccessibleName, /Show all/);
+    await cdp.evaluate('document.querySelector("[data-critical-expiry-more]").click()');
+    assert.equal(await cdp.evaluate('!document.getElementById("inventory-page").hidden'), true);
+    assert.equal(await cdp.evaluate('document.getElementById("status-filter").value'), "critical-expiry");
+    assert.match(
+      await cdp.evaluate('document.getElementById("results-summary").textContent'),
+      new RegExp(`of ${criticalAlert.criticalCount} matching SKUs`)
+    );
+    pass("critical expiry alert opens Inventory with the complete critical set and matching count");
+
     const pageNavigation = await cdp.evaluate(`(() => {
       const buttons = [...document.querySelectorAll("[data-page-target]")];
       const results = buttons.map((button) => {
@@ -206,6 +227,49 @@ async function run() {
     assert.equal(await cdp.evaluate('document.getElementById("delivery-supplier").value'), "Unfinished Supplier Draft");
     pass("switching pages preserves an unfinished receiving draft");
 
+    await cdp.evaluate('document.getElementById("receiving-form").requestSubmit()');
+    assert.match(
+      await cdp.evaluate('document.getElementById("receiving-feedback").textContent'),
+      /Boxes per row is required/
+    );
+    await cdp.evaluate(`(() => {
+      const field = document.getElementById("boxes-per-row");
+      field.value = "2";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
+    assert.doesNotMatch(
+      await cdp.evaluate('document.getElementById("receiving-feedback").textContent'),
+      /Boxes per row is required/
+    );
+    await cdp.evaluate(`(() => {
+      const values = {
+        "receiving-sku": "VALIDATION-SKU",
+        "receiving-product-name": "Validation Product",
+        "receiving-brand": "Validation Brand",
+        "receiving-layers": "1",
+        "units-per-box": "4",
+        "damaged-boxes": "3",
+        "damaged-units": "0"
+      };
+      Object.entries(values).forEach(([id, value]) => {
+        const field = document.getElementById(id);
+        field.value = value;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      document.getElementById("receiving-form").requestSubmit();
+    })()`);
+    assert.match(
+      await cdp.evaluate('document.getElementById("receiving-feedback").textContent'),
+      /Damaged boxes cannot exceed total boxes/
+    );
+    await cdp.evaluate(`(() => {
+      const field = document.getElementById("damaged-boxes");
+      field.value = "0";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.evaluate('document.getElementById("receiving-feedback").hidden'), true);
+    pass("receiving validation updates as fields are corrected while retaining invalid-record checks");
+
     const product = await cdp.evaluate(`(() => {
       const item = inventoryData.find((entry) => Number.isFinite(entry.currentStock));
       return { id: item.productId, name: item.productName, brand: item.brand, before: item.currentStock };
@@ -230,7 +294,10 @@ async function run() {
       document.getElementById("receiving-form").requestSubmit();
       document.getElementById("save-receiving-record").click();
     })()`);
+    await cdp.evaluate('document.getElementById("reconciliation-button").click()');
+    assert.equal(await cdp.evaluate('!document.getElementById("reconciliation-page").hidden'), true);
     assert.equal(await cdp.evaluate('document.querySelectorAll("[data-review-record]").length'), 1);
+    assert.match(await cdp.evaluate('document.getElementById("saved-receiving-count").textContent'), /1 saved locally/);
     pass("receiving record saves locally with damaged quantities separated");
 
     await cdp.evaluate('document.querySelector("[data-review-record]").click()');
@@ -419,6 +486,8 @@ async function run() {
     });
     assert.equal(await cdp.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
     assert.equal(await cdp.evaluate('getComputedStyle(document.querySelector(".reconciliation-totals")).gridTemplateColumns.split(" ").length'), 1);
+    assert.equal(await cdp.evaluate('getComputedStyle(document.querySelector("#boxes-per-row")).minHeight'), "48px");
+    assert.equal(await cdp.evaluate('getComputedStyle(document.querySelector(".table-wrapper")).overflowX'), "auto");
     pass("mobile layout fits at 375px without page-level horizontal overflow");
 
     await cdp.send("Emulation.setEmulatedMedia", {

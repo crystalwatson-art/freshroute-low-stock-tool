@@ -50,6 +50,7 @@ let receivingItems = [];
 let damagePhoto = null;
 let receivingRecords = loadReceivingRecords();
 let reconciliationController = null;
+let receivingFeedbackContext = null;
 
 const statusFilter = document.getElementById("status-filter");
 const productSearch = document.getElementById("product-search");
@@ -76,6 +77,7 @@ const receivingForm = document.getElementById("receiving-form");
 const receivingTableBody = document.getElementById("receiving-table-body");
 const receivingFeedback = document.getElementById("receiving-feedback");
 const damagePhotoInput = document.getElementById("damage-photo");
+const criticalProducts = document.getElementById("critical-products");
 
 document.addEventListener("DOMContentLoaded", () => {
   applySavedTheme();
@@ -89,6 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
   receivingForm.addEventListener("input", handleReceivingInput);
   receivingForm.addEventListener("submit", addReceivingItem);
   receivingTableBody.addEventListener("click", removeReceivingItem);
+  criticalProducts.addEventListener("click", handleCriticalProductsClick);
   damagePhotoInput.addEventListener("change", handleDamagePhoto);
   document.getElementById("remove-damage-photo").addEventListener("click", clearDamagePhoto);
   document.getElementById("save-receiving-record").addEventListener("click", saveReceivingRecord);
@@ -187,6 +190,23 @@ window.FreshRouteNavigation = { goTo: navigateToPage };
 function handleReceivingInput() {
   updateReceivingCalculation();
   renderReceivingReview();
+
+  if (receivingFeedbackContext === "item") {
+    const result = calculateReceivingItem(getReceivingItemInput());
+    if (result.valid) {
+      clearReceivingFeedback();
+    } else {
+      showReceivingFeedback("Fix this product count before adding it.", "error", result.errors, "item");
+    }
+  } else if (receivingFeedbackContext === "record") {
+    const detailsResult = validateDeliveryDetails(getReceivingDeliveryDetails());
+    const errors = [...detailsResult.errors];
+    if (receivingItems.length === 0) errors.push("Add at least one product count.");
+    if (errors.length === 0) clearReceivingFeedback();
+    else showReceivingFeedback("Complete the receiving record before saving it.", "error", errors, "record");
+  } else {
+    clearReceivingFeedback();
+  }
 }
 
 function getReceivingItemInput() {
@@ -240,7 +260,7 @@ function addReceivingItem(event) {
   const result = calculateReceivingItem(getReceivingItemInput());
 
   if (!result.valid) {
-    showReceivingFeedback("Fix this product count before adding it.", "error", result.errors);
+    showReceivingFeedback("Fix this product count before adding it.", "error", result.errors, "item");
     return;
   }
 
@@ -372,7 +392,7 @@ function saveReceivingRecord() {
   if (receivingItems.length === 0) errors.push("Add at least one product count.");
 
   if (errors.length > 0) {
-    showReceivingFeedback("Complete the receiving record before saving it.", "error", errors);
+    showReceivingFeedback("Complete the receiving record before saving it.", "error", errors, "record");
     return;
   }
 
@@ -422,8 +442,7 @@ function resetReceivingDraft({ keepFeedback = false } = {}) {
   document.getElementById("damage-photo-name").textContent = "";
   document.getElementById("damage-photo-preview").hidden = true;
   if (!keepFeedback) {
-    receivingFeedback.hidden = true;
-    receivingFeedback.textContent = "";
+    clearReceivingFeedback();
   }
   updateReceivingCalculation();
   renderReceivingReview();
@@ -458,7 +477,16 @@ function renderSavedReceivingRecords() {
   reconciliationController?.render();
 }
 
-function showReceivingFeedback(message, type, details = []) {
+function clearReceivingFeedback() {
+  receivingFeedbackContext = null;
+  receivingFeedback.hidden = true;
+  receivingFeedback.replaceChildren();
+  receivingFeedback.className = "upload-feedback";
+  receivingFeedback.removeAttribute("role");
+}
+
+function showReceivingFeedback(message, type, details = [], context = null) {
+  receivingFeedbackContext = context;
   receivingFeedback.replaceChildren();
   receivingFeedback.className =
     `upload-feedback ${type === "error" ? "error-message" : "success-message"}`;
@@ -902,10 +930,30 @@ function renderCriticalAlert() {
 
   if (criticalItems.length > 3) {
     const moreItem = document.createElement("li");
-    moreItem.className = "more-critical";
-    moreItem.textContent = `+ ${criticalItems.length - 3} more`;
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "more-critical";
+    moreButton.dataset.criticalExpiryMore = "true";
+    moreButton.setAttribute("aria-label", `Show all ${criticalItems.length} critical expiry products`);
+    moreButton.textContent = `+ ${criticalItems.length - 3} more`;
+    moreItem.appendChild(moreButton);
     productList.appendChild(moreItem);
   }
+}
+
+function handleCriticalProductsClick(event) {
+  const moreButton = event.target.closest("[data-critical-expiry-more]");
+  if (!moreButton) return;
+
+  navigateToPage("inventory");
+  statusFilter.value = "critical-expiry";
+  productSearch.value = "";
+  updateActiveSummaryCard(statusFilter.value);
+  applyFilters();
+  document.getElementById("inventory-title").scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start"
+  });
 }
 
 function applyFilters() {
@@ -965,6 +1013,9 @@ function matchesStatusFilter(item, selectedStatus) {
   if (selectedStatus === "requests-sent") return sentRequests.has(item.requestKey);
   if (selectedStatus === "expired") return isExpired(item.daysToExpiry);
   if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry);
+  if (selectedStatus === "critical-expiry") {
+    return item.daysToExpiry !== null && item.daysToExpiry <= CRITICAL_EXPIRY_DAYS;
+  }
   return item.status === selectedStatus;
 }
 
