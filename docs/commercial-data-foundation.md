@@ -114,7 +114,7 @@ Changing a product's future conversion rules does not rewrite old movements.
 
 `createClassroomDemoAdapter()` is intentionally read-only. It provides a future seam for the current demo without allowing classroom data to enter the commercial ledger.
 
-A future PostgreSQL adapter must implement the same interface by calling authenticated database endpoints. It must take the user identity from the verified session, never from an editable form field.
+The commercial Vercel handlers call authenticated PostgreSQL RPCs with the signed-in Supabase bearer token. The user identity comes from the verified session and database claim, never from an editable form field. The classroom adapter remains separate and read-only.
 
 ## Migration review notes
 
@@ -133,8 +133,8 @@ The migration intentionally does not contain provider credentials, project ident
 - Choose the authentication and database provider and region.
 - Decide invitation expiry, account recovery, session lifetime, and whether MFA is required.
 - Confirm SKU base units, decimal precision, packaging rules, and treatment of partial packages.
-- Add an authenticated adapter and trusted invitation-creation and acceptance workflows.
-- Add server integration tests.
+- Configure the authenticated adapter and trusted invitation-creation and acceptance workflows described in `docs/commercial-preview.md`.
+- Keep the server integration tests running against a disposable PostgreSQL/Supabase environment.
 - Test migrations forward and backward on disposable data.
 - Run database policy tests as every role and as a user from another business.
 - Decide backup retention and recovery targets, then complete a restore drill.

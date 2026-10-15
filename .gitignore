@@ -1,2 +1,8 @@
 
 .DS_Store
+
+# Local-only provider configuration. Never commit Supabase or Vercel secrets.
+.env
+.env.*
+!.env.example
+supabase-config.js

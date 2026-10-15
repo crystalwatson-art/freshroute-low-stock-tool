@@ -57,3 +57,7 @@ python3 -m http.server 8000
 Then open [http://localhost:8000](http://localhost:8000) in a browser. Stop the server with `Ctrl+C`.
 
 No package installation or build command is required.
+
+## Commercial preview
+
+The classroom dashboard remains a standalone, browser-local demo. The authenticated Supabase/Vercel commercial path, migration order, server-only settings, invitation workflow, backup requirements, and preview verification steps are documented in [`docs/commercial-preview.md`](docs/commercial-preview.md). It is not live until a Supabase Preview project and Vercel Preview variables are configured.

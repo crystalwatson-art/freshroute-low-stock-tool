@@ -116,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
     getInventory: () => inventoryData,
     getSourceKey: getCurrentSourceKey,
     getSourceLabel: getCurrentSourceLabel,
+    setRecords: (records) => { receivingRecords = records; },
     onInventoryChanged: refreshInventoryAfterReconciliation
   });
   updateBackToTopVisibility();
@@ -124,8 +125,188 @@ document.addEventListener("DOMContentLoaded", () => {
   renderReceivingReview();
   renderSavedReceivingRecords();
   updateReceivingCalculation();
+  initializeCommercialAccount();
+  window.FreshRouteCommercial?.ready.then(() => loadCommercialReceivingRecords());
+  window.addEventListener("freshroute:commercial-session", () => {
+    updateCommercialAccountStatus();
+    loadCommercialInventory();
+    loadCommercialReceivingRecords();
+  });
   loadDemoData();
 });
+
+function initializeCommercialAccount() {
+  const form = document.getElementById("commercial-auth-form");
+  const recovery = document.getElementById("commercial-recovery");
+  const signout = document.getElementById("commercial-signout");
+  if (!form || !window.FreshRouteCommercial) return;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fields = Object.fromEntries(new FormData(form).entries());
+    const action = event.submitter?.dataset.authAction;
+    try {
+      if (!fields.email || !fields.password) throw new Error("Email and password are required.");
+      if (action === "signup") {
+        await window.FreshRouteCommercial.signUp(fields.email, fields.password, fields.displayName || fields.email);
+        showCommercialFeedback("Account created. Check your email if confirmation is enabled, then sign in.", "success");
+      } else {
+        await window.FreshRouteCommercial.signIn(fields.email, fields.password);
+        showCommercialFeedback("Signed in to the commercial workspace.", "success");
+      }
+      updateCommercialAccountStatus();
+    } catch (error) {
+      showCommercialFeedback(error.message, "error");
+    }
+  });
+  recovery.addEventListener("click", async () => {
+    const email = form.elements.email.value.trim();
+    if (!email) {
+      showCommercialFeedback("Enter your account email before requesting recovery.", "error");
+      return;
+    }
+    try {
+      await window.FreshRouteCommercial.sendRecovery(email);
+      showCommercialFeedback("If the account exists, a recovery email has been sent.", "success");
+    } catch (error) {
+      showCommercialFeedback(error.message, "error");
+    }
+  });
+  signout.addEventListener("click", async () => {
+    try {
+      await window.FreshRouteCommercial.signOut();
+      showCommercialFeedback("Signed out. Commercial data is no longer available in this session.", "success");
+    } catch (error) {
+      showCommercialFeedback(error.message, "error");
+    }
+  });
+  const accessPanel = document.getElementById("business-access-panel");
+  const inviteForm = document.getElementById("business-invite-form");
+  const acceptForm = document.getElementById("business-accept-form");
+  inviteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fields = Object.fromEntries(new FormData(inviteForm).entries());
+    try {
+      if (!window.FreshRouteCommercial.activeBusinessId) throw new Error("No active business membership is available.");
+      await window.FreshRouteCommercial.invite({
+        businessId: window.FreshRouteCommercial.activeBusinessId,
+        email: fields.email,
+        role: fields.role
+      });
+      showCommercialFeedback("Invitation sent. The recipient must sign in with the invited email and accept it before accessing the business.", "success");
+      inviteForm.reset();
+    } catch (error) {
+      showCommercialFeedback(error.message, "error");
+    }
+  });
+  acceptForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fields = Object.fromEntries(new FormData(acceptForm).entries());
+    try {
+      const email = window.FreshRouteCommercial.session?.user?.email;
+      const displayName = window.FreshRouteCommercial.session?.user?.user_metadata?.display_name || email;
+      await window.FreshRouteCommercial.acceptInvitation({
+        invitationId: fields.invitationId,
+        invitationToken: fields.invitationToken,
+        email,
+        displayName
+      });
+      showCommercialFeedback("Invitation accepted. Reloading business access…", "success");
+      window.location.reload();
+    } catch (error) {
+      showCommercialFeedback(error.message, "error");
+    }
+  });
+  window.addEventListener("freshroute:commercial-ready", updateCommercialAccountStatus, { once: false });
+  updateCommercialAccountStatus();
+}
+
+function updateCommercialAccountStatus() {
+  const status = document.getElementById("commercial-account-status");
+  const form = document.getElementById("commercial-auth-form");
+  const signout = document.getElementById("commercial-signout");
+  const accessPanel = document.getElementById("business-access-panel");
+  const account = window.FreshRouteCommercial;
+  if (!status || !form || !account) return;
+  const reconciliationWarning = document.querySelector("#reconciliation-page .prototype-warning");
+  if (!account.configured) {
+    status.textContent = "Classroom demo mode is active. Commercial authentication is not configured for this preview.";
+    form.hidden = false;
+    signout.hidden = true;
+    accessPanel.hidden = true;
+    if (reconciliationWarning) reconciliationWarning.textContent = "DEMONSTRATION MODE: this browser-only workflow records a typed name but does not authenticate a supervisor, persist to the commercial database, or create a real authorized approval.";
+    return;
+  }
+  if (account.isAuthenticated) {
+    status.textContent = account.activeBusinessId
+      ? "Signed in. Receiving and reconciliation records use the authenticated business database."
+      : "Signed in, but no active business membership is assigned yet. Ask an Administrator for an invitation.";
+    form.hidden = false;
+    form.elements.password.value = "";
+    signout.hidden = false;
+    accessPanel.hidden = false;
+    if (reconciliationWarning) reconciliationWarning.textContent = "COMMERCIAL MODE: decisions are authorized by the signed-in business session and persisted by server-side PostgreSQL workflows. This page never trusts a typed supervisor name.";
+  } else {
+    status.textContent = "Commercial mode is configured. Sign in to access business records.";
+    form.hidden = false;
+    signout.hidden = true;
+    accessPanel.hidden = true;
+    if (reconciliationWarning) reconciliationWarning.textContent = "COMMERCIAL MODE: sign in with an active business membership before recording or approving commercial data.";
+  }
+}
+
+function showCommercialFeedback(message, type) {
+  const feedback = document.getElementById("commercial-auth-feedback");
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.className = `upload-feedback ${type === "error" ? "error-message" : "success-message"}`;
+  feedback.hidden = false;
+}
+
+async function loadCommercialReceivingRecords() {
+  const account = window.FreshRouteCommercial;
+  if (!account?.configured || !account.isAuthenticated || !account.activeBusinessId) return;
+  try {
+    receivingRecords = await account.loadReceivingRecords();
+    renderSavedReceivingRecords();
+  } catch (error) {
+    showCommercialFeedback(`Commercial records could not be loaded: ${error.message}`, "error");
+  }
+}
+
+async function loadCommercialInventory() {
+  const account = window.FreshRouteCommercial;
+  if (!account?.configured || !account.isAuthenticated || !account.activeBusinessId) return;
+  try {
+    const rows = await account.loadInventory();
+    dataMode = "commercial";
+    rawRecordCount = rows.length;
+    customerRows = [];
+    customerFileName = "";
+    customerSourceKey = "";
+    baseInventoryData = rows.map((row) => ({
+      productId: row.sku,
+      productName: row.productName,
+      brand: row.brand,
+      currentStock: row.currentStock,
+      restockAt: row.restockAt,
+      reorderQuantity: row.reorderQuantity,
+      daysToExpiry: null,
+      snapshotDate: getLocalTodayISO(),
+      requestKey: `commercial:${row.productId}`,
+      measurementUnit: row.baseUnit
+    }));
+    rebuildInventoryFromBase();
+    pruneActionState();
+    resetFilters();
+    updateDataSourceDisplay();
+    updateDashboardSummary();
+    renderCriticalAlert();
+    applyFilters();
+    renderSavedReceivingRecords();
+  } catch (error) {
+    showCommercialFeedback(`Commercial inventory could not be loaded: ${error.message}`, "error");
+  }
+}
 
 function handlePageNavigationClick(event) {
   const button = event.target.closest(".nav-tool-button[data-page-target]");
@@ -386,7 +567,7 @@ function clearDamagePhoto() {
   renderReceivingReview();
 }
 
-function saveReceivingRecord() {
+async function saveReceivingRecord() {
   const detailsResult = validateDeliveryDetails(getReceivingDeliveryDetails());
   const errors = [...detailsResult.errors];
   if (receivingItems.length === 0) errors.push("Add at least one product count.");
@@ -410,6 +591,27 @@ function saveReceivingRecord() {
     savedAt: new Date().toISOString()
   };
   const nextRecords = [record, ...receivingRecords].slice(0, MAX_SAVED_RECEIVING_RECORDS);
+
+  const commercial = window.FreshRouteCommercial;
+  if (commercial?.configured) {
+    if (!commercial.isAuthenticated || !commercial.activeBusinessId) {
+      showReceivingFeedback("Sign in with an active business membership before saving a commercial receiving record.", "error");
+      return;
+    }
+    try {
+      await commercial.saveReceiving(record);
+      receivingRecords = await commercial.loadReceivingRecords();
+      resetReceivingDraft({ keepFeedback: true });
+      renderSavedReceivingRecords();
+      showReceivingFeedback(
+        `Receiving record for ${record.supplier} was saved to the authenticated business database.`,
+        "success"
+      );
+    } catch (error) {
+      showReceivingFeedback(`The commercial receiving record was not saved: ${error.message}`, "error");
+    }
+    return;
+  }
 
   try {
     localStorage.setItem(RECEIVING_STORAGE_KEY, JSON.stringify(nextRecords));
@@ -520,6 +722,11 @@ function scrollToTop() {
 }
 
 async function refreshCurrentData() {
+  if (dataMode === "commercial") {
+    await loadCommercialInventory();
+    showCommercialFeedback("Commercial inventory refreshed from PostgreSQL.", "success");
+    return;
+  }
   if (dataMode === "customer") {
     setInventoryData(customerRows, {
       mode: "customer",
@@ -551,6 +758,12 @@ async function loadDemoData({ announce = false } = {}) {
 
     const parsed = parseCSV(await response.text());
     if (parsed.errors.length > 0) throw new Error(parsed.errors[0]);
+
+    if (window.FreshRouteCommercial?.configured && window.FreshRouteCommercial.isAuthenticated) {
+      await loadCommercialInventory();
+      loadingMessage.hidden = true;
+      return;
+    }
 
     dataMode = "demo";
     customerRows = [];
@@ -617,13 +830,15 @@ function refreshInventoryAfterReconciliation() {
 }
 
 function getCurrentSourceKey() {
-  return dataMode === "customer" ? customerSourceKey : "demo";
+  if (dataMode === "customer") return customerSourceKey;
+  if (dataMode === "commercial") return `commercial:${window.FreshRouteCommercial?.activeBusinessId || "business"}`;
+  return "demo";
 }
 
 function getCurrentSourceLabel() {
-  return dataMode === "customer"
-    ? `Customer inventory · ${customerFileName || "local CSV"}`
-    : "Demo inventory";
+  if (dataMode === "customer") return `Customer inventory · ${customerFileName || "local CSV"}`;
+  if (dataMode === "commercial") return "Commercial business inventory";
+  return "Demo inventory";
 }
 
 function pruneActionState() {
@@ -664,6 +879,12 @@ function updateDataSourceDisplay() {
     description.textContent =
       `${customerFileName} is loaded only in this tab. Expiration is calculated from today (${getLocalTodayISO()}).`;
     subtitle.textContent = "Operational inventory signals from your locally loaded CSV.";
+    useDemoButton.disabled = false;
+  } else if (dataMode === "commercial") {
+    badge.textContent = "Commercial database";
+    badge.classList.add("customer-mode");
+    description.textContent = "Using the authenticated business inventory from PostgreSQL. The classroom dataset is separate.";
+    subtitle.textContent = "Operational inventory signals from your authenticated business.";
     useDemoButton.disabled = false;
   } else {
     badge.textContent = "Demo mode";
@@ -889,7 +1110,9 @@ function updateDashboardSummary() {
   document.getElementById("requests-sent-count").textContent = requestsSaved;
   document.getElementById("source-data-note").textContent = dataMode === "customer"
     ? `${rawRecordCount.toLocaleString()} local rows · ${inventoryData.length} unique SKUs · Calculated ${getLocalTodayISO()}`
-    : `${rawRecordCount.toLocaleString()} raw source records · ${inventoryData.length} latest unique SKUs`;
+    : dataMode === "commercial"
+      ? `${inventoryData.length} database products · immutable movements · Calculated ${getLocalTodayISO()}`
+      : `${rawRecordCount.toLocaleString()} raw source records · ${inventoryData.length} latest unique SKUs`;
   updateActiveInventoryProgress();
 }
 
