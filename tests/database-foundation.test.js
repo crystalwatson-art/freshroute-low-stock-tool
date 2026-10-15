@@ -18,6 +18,10 @@ const warehouse = readFileSync(
   join(ROOT, "database/migrations/003_warehouse_locations_and_transfers.sql"),
   "utf8"
 );
+const newProduct = readFileSync(
+  join(ROOT, "database/migrations/004_new_product_review.sql"),
+  "utf8"
+);
 
 const TENANT_TABLES = [
   "businesses",
@@ -132,4 +136,17 @@ test("location balances preserve product, lot, pallet, and warehouse dimensions"
   assert.match(warehouse, /movement\.location_id/);
   assert.match(warehouse, /movement\.lot_id/);
   assert.match(warehouse, /movement\.pallet_id/);
+});
+
+test("new-product review preserves unknown deliveries and uses an authenticated atomic path", () => {
+  assert.match(newProduct, /create table new_product_reviews/);
+  assert.match(newProduct, /foreign key \(business_id, delivery_id\)/);
+  assert.match(newProduct, /alter table new_product_reviews enable row level security/);
+  assert.match(newProduct, /array\['supervisor', 'administrator'\]::app_role\[\]/);
+  assert.match(newProduct, /create function review_new_product/);
+  assert.match(newProduct, /create function resubmit_new_product_review/);
+  assert.match(newProduct, /create trigger new_product_review_events_are_immutable/);
+  assert.match(newProduct, /request_idempotency_key/);
+  assert.match(newProduct, /low_stock_threshold/);
+  assert.match(newProduct, /accepted_quantity/);
 });

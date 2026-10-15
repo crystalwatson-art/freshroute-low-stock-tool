@@ -50,6 +50,12 @@ const FreshRouteReconciliationUI = (() => {
           ? "Approved locally"
           : decision?.type === "rejection"
             ? "Rejected"
+            : decision?.type === "new_product_review"
+              ? decision.decision === "approved"
+                ? "New product approved · demo"
+                : decision.decision === "rejected"
+                  ? "New product rejected"
+                  : "Corrections requested"
             : sourceMatches ? "Awaiting review" : "Different inventory source";
         return `
           <li class="saved-record-card">
@@ -125,6 +131,20 @@ const FreshRouteReconciliationUI = (() => {
       const blockers = prepared.errors.length > 0 && !decision
         ? `<div class="approval-blockers" role="alert"><strong>Approval is blocked:</strong><ul>${prepared.errors.map((error) => `<li>${escapeHTML(error)}</li>`).join("")}</ul></div>`
         : "";
+      const newProductForms = prepared.unknownItems?.length > 0 &&
+        (!decision || decision.type !== "new_product_review" || decision.decision === "correction_requested")
+        ? `<section class="new-product-review" aria-labelledby="new-product-review-title">
+            <div class="saved-receiving-heading">
+              <div>
+                <p class="eyebrow">Supervisor path · demo only</p>
+                <h4 id="new-product-review-title">New Product Review</h4>
+              </div>
+              <span class="mode-badge">Unfamiliar SKU</span>
+            </div>
+            <p>Verify the product identity, measurement, accepted quantity, and stock thresholds before posting it. The local demo cannot authenticate this approval.</p>
+            ${prepared.unknownItems.map((item, index) => renderNewProductReviewForm(record, item, index)).join("")}
+          </section>`
+        : "";
 
       content.innerHTML = `
         <div class="reconciliation-record-heading">
@@ -144,11 +164,26 @@ const FreshRouteReconciliationUI = (() => {
           </table>
         </div>
         ${blockers}
+        ${newProductForms}
         ${renderDecisionControls(record, decision, prepared)}
       `;
     }
 
     function renderDecisionControls(record, decision, prepared) {
+      if (decision?.type === "new_product_review") {
+        const reviewLabel = decision.decision === "approved"
+          ? "New product approved in demonstration mode — accepted usable quantity was posted locally."
+          : decision.decision === "rejected"
+            ? "New product rejected in demonstration mode — no inventory was posted."
+            : "Corrections requested for this new product review.";
+        return `
+          <div class="decision-summary ${decision.decision === "approved" ? "approved-decision" : decision.decision === "rejected" ? "rejected-decision" : "correction-decision"}">
+            <strong>${reviewLabel}</strong>
+            <span>Typed actor: ${escapeHTML(decision.actedBy)} · ${escapeHTML(formatTimestamp(decision.actedAt))}</span>
+            <p>${escapeHTML(decision.reason)}</p>
+          </div>
+        `;
+      }
       if (decision?.type === "rejection") {
         return `
           <div class="decision-summary rejected-decision">
@@ -195,6 +230,35 @@ const FreshRouteReconciliationUI = (() => {
           <div class="decision-actions">
             <button class="secondary-button" type="submit" data-decision="reject">Reject delivery</button>
             <button class="primary-button" type="submit" data-decision="approve" ${prepared.valid ? "" : "disabled"}>Approve and apply locally</button>
+          </div>
+        </form>
+      `;
+    }
+
+    function renderNewProductReviewForm(record, item, index) {
+      const formId = `new-product-review-form-${index}`;
+      const sourceKey = `${String(item.sku || "").trim().toLowerCase()}|${String(item.brand || "").trim().toLowerCase()}`;
+      return `
+        <form id="${formId}" class="new-product-review-form" data-new-product-review data-source-item-key="${escapeHTML(sourceKey)}" novalidate>
+          <h5>${escapeHTML(item.productName || item.sku)} · unfamiliar SKU</h5>
+          <div class="new-product-review-fields">
+            <div class="receiving-field"><label for="${formId}-sku">SKU</label><input id="${formId}-sku" name="sku" value="${escapeHTML(item.sku)}" maxlength="80" required></div>
+            <div class="receiving-field"><label for="${formId}-name">Product name</label><input id="${formId}-name" name="productName" value="${escapeHTML(item.productName)}" maxlength="160" required></div>
+            <div class="receiving-field"><label for="${formId}-brand">Brand</label><input id="${formId}-brand" name="brand" value="${escapeHTML(item.brand)}" maxlength="120" required></div>
+            <div class="receiving-field"><label for="${formId}-supplier">Supplier</label><input id="${formId}-supplier" name="supplier" value="${escapeHTML(record.supplier)}" readonly></div>
+            <div class="receiving-field"><label for="${formId}-unit">Measurement unit</label><select id="${formId}-unit" name="measurementUnit"><option value="each">each</option><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="mL">mL</option></select></div>
+            <div class="receiving-field"><label for="${formId}-received">Received quantity</label><input id="${formId}-received" name="receivedQuantity" type="number" min="0" step="any" value="${item.totalUnits}" readonly></div>
+            <div class="receiving-field"><label for="${formId}-damaged">Damaged quantity</label><input id="${formId}-damaged" name="damagedQuantity" type="number" min="0" step="any" value="${item.totalDamagedUnits}" readonly></div>
+            <div class="receiving-field"><label for="${formId}-accepted">Accepted usable quantity</label><input id="${formId}-accepted" name="acceptedQuantity" type="number" min="0" step="any" value="${item.usableUnits}" required></div>
+            <div class="receiving-field"><label for="${formId}-low">Low-stock threshold</label><input id="${formId}-low" name="lowStockThreshold" type="number" min="0" step="any" value="0" required></div>
+            <div class="receiving-field"><label for="${formId}-reorder">Reorder threshold</label><input id="${formId}-reorder" name="reorderThreshold" type="number" min="0" step="any" value="0" required></div>
+            <div class="receiving-field new-product-review-reason"><label for="${formId}-reason">Decision reason</label><textarea id="${formId}-reason" name="reason" maxlength="1000" required placeholder="Explain what was verified or what must be corrected"></textarea></div>
+            <div class="receiving-field"><label for="${formId}-actor">Supervisor name <span aria-hidden="true">*</span></label><input id="${formId}-actor" name="actedBy" maxlength="120" required placeholder="Demo only — not authentication"></div>
+          </div>
+          <div class="decision-actions">
+            <button class="secondary-button" type="submit" data-new-product-decision="reject">Reject product</button>
+            <button class="secondary-button" type="submit" data-new-product-decision="request_correction">Request corrections</button>
+            <button class="primary-button" type="submit" data-new-product-decision="approve">Approve and post accepted quantity</button>
           </div>
         </form>
       `;
@@ -255,7 +319,44 @@ const FreshRouteReconciliationUI = (() => {
         handleDecision(event, record);
       } else if (event.target.id === "inventory-correction-form") {
         handleCorrection(event);
+      } else if (event.target.matches("[data-new-product-review]")) {
+        handleNewProductDecision(event, record);
       }
+    }
+
+    function handleNewProductDecision(event, record) {
+      const form = event.target;
+      const submitter = event.submitter;
+      const item = (record.items || []).find((candidate) => {
+        const key = `${String(candidate.sku || "").trim().toLowerCase()}|${String(candidate.brand || "").trim().toLowerCase()}`;
+        return key === form.dataset.sourceItemKey;
+      });
+      const fields = Object.fromEntries(new FormData(form).entries());
+      const result = FreshRouteReconciliation.createNewProductDecision({
+        id: createId("new-product-review"),
+        record,
+        item,
+        inventory: getInventory(),
+        sourceKey: getSourceKey(),
+        decision: submitter?.dataset.newProductDecision,
+        actedBy: fields.actedBy,
+        fields
+      });
+      if (!result.valid) {
+        showFeedback("This new-product review needs attention.", "error", result.errors);
+        return;
+      }
+      if (!persistEntry(result.entry)) return;
+      if (result.entry.decision === "approved") onInventoryChanged();
+      render();
+      showFeedback(
+        result.entry.decision === "approved"
+          ? "New product approved in demonstration mode; accepted quantity was posted locally."
+          : result.entry.decision === "rejected"
+            ? "New product rejected in demonstration mode; no inventory was posted."
+            : "Corrections requested; the delivery remains saved for follow-up.",
+        result.entry.decision === "approved" ? "success" : "status"
+      );
     }
 
     function handleDecision(event, record) {
@@ -385,7 +486,7 @@ const FreshRouteReconciliationUI = (() => {
           typeof entry.id === "string" &&
           typeof entry.sourceKey === "string" &&
           typeof entry.deliveryRecordId === "string" &&
-          ["approval", "rejection", "correction"].includes(entry.type) &&
+          ["approval", "rejection", "correction", "new_product_review"].includes(entry.type) &&
           Array.isArray(entry.changes)
         ).slice(0, MAX_ENTRIES);
       } catch (error) {
