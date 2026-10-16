@@ -92,7 +92,7 @@
             <div>
               <p>Expiring Soon</p>
               <strong id="expiring-soon-count">—</strong>
-              <small>Expires today or within 14 days</small>
+              <small>Uses each product's warning period</small>
             </div>
           </article>
 
@@ -148,7 +148,7 @@
           <div class="tool-panel-heading">
             <div class="data-source-title-row">
               <p class="eyebrow">FreshRoute Pro prototype</p>
-              <span class="mode-badge customer-mode">Local browser data</span>
+              <span id="receiving-mode-badge" class="mode-badge">Local browser data</span>
             </div>
             <h2 id="receiving-title">Delivery Receiving</h2>
             <p>Count a delivery, record damage once, and prepare a supervisor-ready summary.</p>
@@ -203,6 +203,14 @@
                 <input id="receiving-brand" name="brand" type="text" maxlength="120" autocomplete="organization" required>
               </div>
               <div class="receiving-field">
+                <label for="receiving-lot-code">Batch or lot</label>
+                <input id="receiving-lot-code" name="lotCode" type="text" maxlength="120" autocomplete="off" placeholder="Optional for dated stock">
+              </div>
+              <div class="receiving-field">
+                <label for="receiving-expiration-date">Expiration date</label>
+                <input id="receiving-expiration-date" name="expirationDate" type="date" autocomplete="off">
+              </div>
+              <div class="receiving-field">
                 <label for="boxes-per-row">Boxes per row <span aria-hidden="true">*</span></label>
                 <input id="boxes-per-row" name="boxesPerRow" type="number" min="1" step="1" inputmode="numeric" required>
               </div>
@@ -245,7 +253,7 @@
             </div>
             <div class="receiving-review-actions">
               <button id="clear-receiving-draft" class="text-button" type="button" disabled>Clear draft</button>
-              <button id="save-receiving-record" class="primary-button" type="button" disabled>Save record locally</button>
+              <button id="save-receiving-record" class="primary-button" type="button" disabled>Save receiving record</button>
             </div>
           </div>
 
@@ -399,6 +407,21 @@
             </div>
           </form>
           <div id="business-access-panel" class="business-access-panel" hidden>
+            <section id="expiration-settings-panel" aria-labelledby="expiration-settings-title" hidden>
+              <h3 id="expiration-settings-title">Expiration warning periods</h3>
+              <p>Administrators can set how many days before expiry each product appears as Expiring Soon.</p>
+              <form id="expiration-settings-form" class="commercial-auth-form" novalidate>
+                <div class="receiving-field">
+                  <label for="expiration-product">Product</label>
+                  <select id="expiration-product" name="productId" required></select>
+                </div>
+                <div class="receiving-field">
+                  <label for="expiration-warning-days">Warning days</label>
+                  <input id="expiration-warning-days" name="warningDays" type="number" min="0" max="3650" step="1" inputmode="numeric" required>
+                </div>
+                <button class="secondary-button" type="submit">Save warning period</button>
+              </form>
+            </section>
             <section aria-labelledby="invite-member-title">
               <h3 id="invite-member-title">Invite a business member</h3>
               <form id="business-invite-form" class="commercial-auth-form" novalidate>

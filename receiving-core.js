@@ -20,6 +20,8 @@ const FreshRouteReceiving = (() => {
     const sku = String(input.sku || "").trim();
     const productName = String(input.productName || "").trim();
     const brand = String(input.brand || "").trim();
+    const lotCode = String(input.lotCode || "").trim();
+    const expirationDate = String(input.expirationDate || "").trim();
     const fields = {
       boxesPerRow: parseInteger(input.boxesPerRow, "Boxes per row"),
       layers: parseInteger(input.layers, "Number of layers"),
@@ -43,6 +45,13 @@ const FreshRouteReceiving = (() => {
       errors.push("Brand is required.");
     } else if (brand.length > 120) {
       errors.push("Brand must be 120 characters or fewer.");
+    }
+    if (lotCode.length > 120) errors.push("Batch or lot must be 120 characters or fewer.");
+    if ((lotCode === "") !== (expirationDate === "")) {
+      errors.push("Enter both a batch or lot and an expiration date for dated stock.");
+    }
+    if (expirationDate && !isValidISODate(expirationDate)) {
+      errors.push("Expiration date must be a valid date.");
     }
 
     if (errors.length > 0) return { valid: false, errors, item: null };
@@ -87,6 +96,8 @@ const FreshRouteReceiving = (() => {
         sku,
         productName,
         brand,
+        lotCode,
+        expirationDate,
         boxesPerRow,
         layers,
         unitsPerBox,

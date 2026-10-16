@@ -409,7 +409,8 @@ const FreshRouteCore = (() => {
       reorderQuantity,
       daysToExpiry,
       stockStatus,
-      status: getDisplayStatus(stockStatus, daysToExpiry)
+      expirationWarningDays: EXPIRY_WARNING_DAYS,
+      status: getDisplayStatus(stockStatus, daysToExpiry, EXPIRY_WARNING_DAYS)
     };
   }
 
@@ -420,10 +421,10 @@ const FreshRouteCore = (() => {
     return "adequate-stock";
   }
 
-  function getDisplayStatus(stockStatus, daysToExpiry) {
+  function getDisplayStatus(stockStatus, daysToExpiry, expirationWarningDays = EXPIRY_WARNING_DAYS) {
     if (isExpired(daysToExpiry)) return "expired";
     if (daysToExpiry === 0) return "expires-today";
-    if (isExpiringSoon(daysToExpiry)) return "expiring-soon";
+    if (isExpiringSoon(daysToExpiry, expirationWarningDays)) return "expiring-soon";
     if (stockStatus === "low-stock" || stockStatus === "reorder-soon") return stockStatus;
     return stockStatus === "needs-review" ? "needs-review" : "healthy-stock";
   }
@@ -432,8 +433,11 @@ const FreshRouteCore = (() => {
     return daysToExpiry !== null && daysToExpiry < 0;
   }
 
-  function isExpiringSoon(daysToExpiry) {
-    return daysToExpiry !== null && daysToExpiry >= 0 && daysToExpiry <= EXPIRY_WARNING_DAYS;
+  function isExpiringSoon(daysToExpiry, expirationWarningDays = EXPIRY_WARNING_DAYS) {
+    const warningDays = Number.isFinite(Number(expirationWarningDays))
+      ? Number(expirationWarningDays)
+      : EXPIRY_WARNING_DAYS;
+    return daysToExpiry !== null && daysToExpiry >= 0 && daysToExpiry <= warningDays;
   }
 
   function sortByPriority(firstItem, secondItem) {

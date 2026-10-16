@@ -156,6 +156,21 @@ test("separate receiving lines for one SKU are combined once", () => {
   assert.equal(result.changes[0].afterQuantity, 41);
 });
 
+test("reconciliation keeps distinct lot and expiration details for one SKU", () => {
+  const record = delivery({
+    items: [
+      { ...delivery().items[0], lotCode: "LOT-A", expirationDate: "2026-11-01" },
+      { ...delivery().items[0], lotCode: "LOT-B", expirationDate: "2026-12-01", totalDamagedUnits: 12, usableUnits: 12 }
+    ]
+  });
+  const result = reconciliation.prepareApproval({ record, inventory, sourceKey: "demo", ledger: [] });
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.changes[0].lotDetails, [
+    { lotCode: "LOT-A", expirationDate: "2026-11-01" },
+    { lotCode: "LOT-B", expirationDate: "2026-12-01" }
+  ]);
+});
+
 test("corrections are separate traceable entries", () => {
   const approved = approval();
   const afterApproval = reconciliation.applyLedgerToInventory(inventory, [approved], "demo");

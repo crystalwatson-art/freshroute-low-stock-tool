@@ -12,7 +12,8 @@ const MIGRATIONS = [
   join(ROOT, "database/migrations/002_access_control_and_approval.sql"),
   join(ROOT, "database/migrations/003_warehouse_locations_and_transfers.sql"),
   join(ROOT, "database/migrations/004_new_product_review.sql"),
-  join(ROOT, "database/migrations/005_authenticated_commercial_workflows.sql")
+  join(ROOT, "database/migrations/005_authenticated_commercial_workflows.sql"),
+  join(ROOT, "database/migrations/006_expiration_tracking.sql")
 ];
 const DEFAULT_POSTGRES_BINS = [
   process.env.POSTGRES_BIN,
@@ -136,7 +137,7 @@ async function run() {
   for (const migration of MIGRATIONS) {
     command(join(postgresBin, "psql"), psqlArgs(["-f", migration]));
   }
-  pass("all five migrations apply to a new PostgreSQL cluster");
+  pass("all six migrations apply to a new PostgreSQL cluster");
 
   runSql(String.raw`
 insert into businesses (id, name) values
@@ -1055,6 +1056,127 @@ end $$;
 reset role;
   `);
   pass("authenticated receiving persists known and unknown lines with idempotent replay");
+
+  runSql(String.raw`
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+select record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001', 'expiration-fresh-0001',
+  '{"supplier":"Expiration Supplier","delivered_on":"2026-10-15"}'::jsonb,
+  '[{"sku":"A-EACH","product_name":"Business A Each Product","brand":"A Brand","total_units":10,"damaged_units":1,"lot_code":"LOT-FRESH-001","expiration_date": "2030-01-15"}]'::jsonb
+);
+select record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001', 'expiration-soon-0001',
+  '{"supplier":"Expiration Supplier","delivered_on":"2026-10-15"}'::jsonb,
+  jsonb_build_array(jsonb_build_object('sku','A-EACH','product_name','Business A Each Product','brand','A Brand','total_units',4,'damaged_units',0,'lot_code','LOT-SOON-001','expiration_date',(current_date + 3)::text))
+);
+select record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001', 'expiration-expired-001',
+  '{"supplier":"Expiration Supplier","delivered_on":"2026-10-15"}'::jsonb,
+  jsonb_build_array(jsonb_build_object('sku','A-EACH','product_name','Business A Each Product','brand','A Brand','total_units',5,'damaged_units',0,'lot_code','LOT-EXPIRED-001','expiration_date',(current_date - 1)::text))
+);
+select record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001', 'expiration-new-product-1',
+  '{"supplier":"Expiration Supplier","delivered_on":"2026-10-15"}'::jsonb,
+  '[{"sku":"NEW-LOT-001","product_name":"New Lot Product","brand":"Lot Brand","total_units":6,"damaged_units":1,"lot_code":"LOT-NEW-001","expiration_date": "2030-02-20"}]'::jsonb
+);
+select record_receiving_delivery(
+  '10000000-0000-0000-0000-000000000001', 'expiration-new-expired-1',
+  '{"supplier":"Expiration Supplier","delivered_on":"2026-10-15"}'::jsonb,
+  jsonb_build_array(jsonb_build_object('sku','NEW-EXPIRED-001','product_name','Expired New Product','brand','Lot Brand','total_units',6,'damaged_units',0,'lot_code','LOT-NEW-EXPIRED-001','expiration_date',(current_date - 1)::text))
+);
+do $$
+declare blocked boolean := false;
+begin
+  if (select count(*) from inventory_lots where lot_code in ('LOT-FRESH-001', 'LOT-SOON-001', 'LOT-EXPIRED-001')) <> 3 then
+    raise exception 'Receiving did not create every known-product lot';
+  end if;
+  if (select count(distinct expiration_date) from inventory_lots where product_id = '30000000-0000-0000-0000-000000000001' and lot_code in ('LOT-FRESH-001', 'LOT-SOON-001')) <> 2 then
+    raise exception 'Different expiration dates were collapsed for one product';
+  end if;
+  if (select count(*) from receiving_items item join inventory_lots lot on lot.business_id = item.business_id and lot.id = item.lot_id where item.delivery_id = (select id from receiving_deliveries where client_idempotency_key = 'expiration-fresh-0001') and lot.lot_code = 'LOT-FRESH-001') <> 1 then
+    raise exception 'Known receiving item did not retain its lot';
+  end if;
+  if (select count(*) from new_product_reviews where lot_code = 'LOT-NEW-001') <> 1 then
+    raise exception 'Unknown receiving item did not retain its lot';
+  end if;
+  begin
+    perform update_product_expiration_warning('30000000-0000-0000-0000-000000000001', 5);
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Worker changed a product expiration policy'; end if;
+end;
+$$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', false);
+select decide_receiving_delivery((select id from receiving_deliveries where client_idempotency_key = 'expiration-fresh-0001'), 'approve', 'Fresh lot verified.', 'expiration-approval-fresh-1');
+select decide_receiving_delivery((select id from receiving_deliveries where client_idempotency_key = 'expiration-soon-0001'), 'approve', 'Soon-expiring lot verified.', 'expiration-approval-soon-1');
+select review_new_product((select id from new_product_reviews where lot_code = 'LOT-NEW-001'), 'approve', 'New product and lot verified.', 'expiration-new-review-1');
+do $$
+declare blocked boolean := false;
+begin
+  begin
+    perform review_new_product((select id from new_product_reviews where lot_code = 'LOT-NEW-EXPIRED-001'), 'approve', 'Expired new lot must be blocked.', 'expiration-new-expired-review-1');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Expired new-product lot was approved as usable inventory'; end if;
+  if exists (select 1 from products where sku = 'NEW-EXPIRED-001') then
+    raise exception 'Expired new-product approval left a product behind';
+  end if;
+  blocked := false;
+  begin
+    perform decide_receiving_delivery((select id from receiving_deliveries where client_idempotency_key = 'expiration-expired-001'), 'approve', 'Expired lot must be blocked.', 'expiration-approval-expired-1');
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Expired lot was approved as usable inventory'; end if;
+  if exists (select 1 from inventory_transactions transaction join inventory_adjustment_requests request on request.business_id = transaction.business_id and request.id = transaction.request_id where request.source_reference = 'receiving-delivery:' || (select id::text from receiving_deliveries where client_idempotency_key = 'expiration-expired-001')) then
+    raise exception 'Expired delivery created an inventory transaction';
+  end if;
+  if (select count(*) from inventory_movements movement join inventory_lots lot on lot.business_id = movement.business_id and lot.id = movement.lot_id where lot.lot_code = 'LOT-NEW-001') <> 1 then
+    raise exception 'Approved new product did not post one lot-aware movement';
+  end if;
+  if (select quantity from inventory_lot_balances where lot_code = 'LOT-FRESH-001') <> 9 then
+    raise exception 'Fresh lot quantity did not preserve usable units';
+  end if;
+  if (select quantity from inventory_lot_balances where lot_code = 'LOT-SOON-001') <> 4 then
+    raise exception 'Soon-expiring lot quantity was not tracked';
+  end if;
+end;
+$$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', false);
+select update_product_expiration_warning('30000000-0000-0000-0000-000000000001', 5);
+do $$
+begin
+  if (select expiration_warning_days from products where id = '30000000-0000-0000-0000-000000000001') <> 5 then
+    raise exception 'Administrator warning period was not saved';
+  end if;
+  if (select count(*) from inventory_lot_balances where product_id = '30000000-0000-0000-0000-000000000001' and expiration_date = current_date + 3 and quantity > 0) <> 1 then
+    raise exception 'Expiring-soon lot was not identified by date and quantity';
+  end if;
+end;
+$$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000005', false);
+do $$
+declare blocked boolean := false;
+begin
+  begin
+    perform update_product_expiration_warning('30000000-0000-0000-0000-000000000001', 30);
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Business B changed Business A expiration policy'; end if;
+end;
+$$;
+reset role;
+  `);
+  pass("commercial lots preserve quantities and dates, block expired approval, and enforce warning permissions");
 
   runSql(String.raw`
 insert into freshroute_test_ids (review_id)

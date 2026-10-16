@@ -193,8 +193,34 @@ function initializeCommercialAccount() {
     }
   });
   const accessPanel = document.getElementById("business-access-panel");
+  const expirationPanel = document.getElementById("expiration-settings-panel");
+  const expirationForm = document.getElementById("expiration-settings-form");
   const inviteForm = document.getElementById("business-invite-form");
   const acceptForm = document.getElementById("business-accept-form");
+  expirationForm.addEventListener("change", (event) => {
+    if (event.target.name !== "productId") return;
+    const selected = inventoryData.find((item) => item.databaseProductId === event.target.value);
+    if (selected) expirationForm.elements.warningDays.value = selected.expirationWarningDays ?? 14;
+  });
+  expirationForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fields = Object.fromEntries(new FormData(expirationForm).entries());
+    const warningDays = Number(fields.warningDays);
+    if (!fields.productId || !Number.isInteger(warningDays) || warningDays < 0 || warningDays > 3650) {
+      showCommercialFeedback("Warning days must be a whole number from 0 to 3,650.", "error");
+      return;
+    }
+    try {
+      await window.FreshRouteCommercial.updateExpirationWarning({
+        productId: fields.productId,
+        warningDays
+      });
+      await loadCommercialInventory();
+      showCommercialFeedback("The product expiration warning period was saved.", "success");
+    } catch (error) {
+      showCommercialFeedback(`The expiration warning period was not saved: ${error.message}`, "error");
+    }
+  });
   inviteForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const fields = Object.fromEntries(new FormData(inviteForm).entries());
@@ -238,6 +264,7 @@ function updateCommercialAccountStatus() {
   const form = document.getElementById("commercial-auth-form");
   const signout = document.getElementById("commercial-signout");
   const accessPanel = document.getElementById("business-access-panel");
+  const expirationPanel = document.getElementById("expiration-settings-panel");
   const account = window.FreshRouteCommercial;
   if (!status || !form || !account) return;
   const reconciliationWarning = document.querySelector("#reconciliation-page .prototype-warning");
@@ -246,6 +273,7 @@ function updateCommercialAccountStatus() {
     form.hidden = false;
     signout.hidden = true;
     accessPanel.hidden = true;
+    if (expirationPanel) expirationPanel.hidden = true;
     if (reconciliationWarning) reconciliationWarning.textContent = "DEMONSTRATION MODE: this browser-only workflow records a typed name but does not authenticate a supervisor, persist to the commercial database, or create a real authorized approval.";
     return;
   }
@@ -257,14 +285,34 @@ function updateCommercialAccountStatus() {
     form.elements.password.value = "";
     signout.hidden = false;
     accessPanel.hidden = false;
+    if (expirationPanel) expirationPanel.hidden = account.activeRole !== "administrator";
+    renderExpirationSettings();
     if (reconciliationWarning) reconciliationWarning.textContent = "COMMERCIAL MODE: decisions are authorized by the signed-in business session and persisted by server-side PostgreSQL workflows. This page never trusts a typed supervisor name.";
   } else {
     status.textContent = "Commercial mode is configured. Sign in to access business records.";
     form.hidden = false;
     signout.hidden = true;
     accessPanel.hidden = true;
+    if (expirationPanel) expirationPanel.hidden = true;
     if (reconciliationWarning) reconciliationWarning.textContent = "COMMERCIAL MODE: sign in with an active business membership before recording or approving commercial data.";
   }
+}
+
+function renderExpirationSettings() {
+  const form = document.getElementById("expiration-settings-form");
+  const panel = document.getElementById("expiration-settings-panel");
+  const account = window.FreshRouteCommercial;
+  if (!form || !panel || account?.activeRole !== "administrator") return;
+  const products = inventoryData.filter((item) => item.databaseProductId);
+  const selectedProductId = form.elements.productId.value;
+  form.elements.productId.innerHTML = products.length > 0
+    ? products.map((item) => `<option value="${escapeHTML(item.databaseProductId)}">${escapeHTML(item.productName)} · ${escapeHTML(item.productId)}</option>`).join("")
+    : "<option value=\"\">No commercial products loaded</option>";
+  if (products.some((item) => item.databaseProductId === selectedProductId)) {
+    form.elements.productId.value = selectedProductId;
+  }
+  const selected = products.find((item) => item.databaseProductId === form.elements.productId.value) || products[0];
+  form.elements.warningDays.value = selected?.expirationWarningDays ?? 14;
 }
 
 function showCommercialFeedback(message, type) {
@@ -298,12 +346,18 @@ async function loadCommercialInventory() {
     customerSourceKey = "";
     baseInventoryData = rows.map((row) => ({
       productId: row.sku,
+      databaseProductId: row.productId,
       productName: row.productName,
       brand: row.brand,
       currentStock: row.currentStock,
       restockAt: row.restockAt,
       reorderQuantity: row.reorderQuantity,
-      daysToExpiry: null,
+      daysToExpiry: row.daysToExpiry ?? null,
+      expirationDate: row.expirationDate || null,
+      expirationWarningDays: row.expirationWarningDays ?? 14,
+      expiredStock: row.expiredStock ?? 0,
+      expiringSoonStock: row.expiringSoonStock ?? 0,
+      lots: Array.isArray(row.lots) ? row.lots : [],
       snapshotDate: getLocalTodayISO(),
       requestKey: `commercial:${row.productId}`,
       measurementUnit: row.baseUnit
@@ -316,6 +370,7 @@ async function loadCommercialInventory() {
     renderCriticalAlert();
     applyFilters();
     renderSavedReceivingRecords();
+    renderExpirationSettings();
   } catch (error) {
     showCommercialFeedback(`Commercial inventory could not be loaded: ${error.message}`, "error");
   }
@@ -411,6 +466,8 @@ function getReceivingItemInput() {
     boxesPerRow: receivingForm.elements.boxesPerRow.value,
     layers: receivingForm.elements.layers.value,
     unitsPerBox: receivingForm.elements.unitsPerBox.value,
+    lotCode: receivingForm.elements.lotCode.value,
+    expirationDate: receivingForm.elements.expirationDate.value,
     damagedBoxes: receivingForm.elements.damagedBoxes.value,
     damagedUnits: receivingForm.elements.damagedUnits.value
   };
@@ -474,7 +531,7 @@ function addReceivingItem(event) {
 }
 
 function clearReceivingProductFields() {
-  ["sku", "productName", "brand", "boxesPerRow", "layers", "unitsPerBox"].forEach((name) => {
+  ["sku", "productName", "brand", "lotCode", "expirationDate", "boxesPerRow", "layers", "unitsPerBox"].forEach((name) => {
     receivingForm.elements[name].value = "";
   });
   receivingForm.elements.damagedBoxes.value = "0";
@@ -523,7 +580,7 @@ function renderReceivingReview() {
 
   receivingTableBody.innerHTML = receivingItems.map((item) => `
     <tr>
-      <td><strong class="product-name">${escapeHTML(item.productName)}</strong><small>SKU ${escapeHTML(item.sku)} · ${escapeHTML(item.brand)}</small></td>
+      <td><strong class="product-name">${escapeHTML(item.productName)}</strong><small>SKU ${escapeHTML(item.sku)} · ${escapeHTML(item.brand)}</small>${item.lotCode ? `<small>Lot ${escapeHTML(item.lotCode)} · Expires ${escapeHTML(item.expirationDate || "Needs date")}</small>` : ""}</td>
       <td>${item.boxesPerRow.toLocaleString()} × ${item.layers.toLocaleString()} = ${item.totalBoxes.toLocaleString()} boxes</td>
       <td>${item.unitsPerBox.toLocaleString()} × ${item.totalBoxes.toLocaleString()} = ${item.totalUnits.toLocaleString()}</td>
       <td>${item.damagedBoxes.toLocaleString()} boxes + ${item.damagedUnits.toLocaleString()} units<small>${item.totalDamagedUnits.toLocaleString()} total damaged units</small></td>
@@ -829,7 +886,7 @@ function rebuildInventoryFromBase() {
     return {
       ...item,
       stockStatus,
-      status: getDisplayStatus(stockStatus, item.daysToExpiry)
+      status: getDisplayStatus(stockStatus, item.daysToExpiry, item.expirationWarningDays)
     };
   });
 }
@@ -883,8 +940,20 @@ function resetFilters() {
 
 function updateDataSourceDisplay() {
   const badge = document.getElementById("data-mode-badge");
+  const receivingBadge = document.getElementById("receiving-mode-badge");
   const description = document.getElementById("data-mode-description");
   const subtitle = document.querySelector(".subtitle");
+
+  const sourceLabel = dataMode === "customer"
+    ? "Customer inventory"
+    : dataMode === "commercial"
+      ? "Commercial database"
+      : "Local browser data";
+  [badge, receivingBadge].forEach((element) => {
+    if (!element) return;
+    element.textContent = sourceLabel;
+    element.classList.toggle("customer-mode", dataMode !== "demo");
+  });
 
   if (dataMode === "customer") {
     badge.textContent = "Customer inventory";
@@ -1248,7 +1317,7 @@ function matchesStatusFilter(item, selectedStatus) {
   }
   if (selectedStatus === "requests-sent") return sentRequests.has(item.requestKey);
   if (selectedStatus === "expired") return isExpired(item.daysToExpiry);
-  if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry);
+  if (selectedStatus === "expiring-soon") return isExpiringSoon(item.daysToExpiry, item.expirationWarningDays);
   if (selectedStatus === "critical-expiry") {
     return item.daysToExpiry !== null && item.daysToExpiry <= CRITICAL_EXPIRY_DAYS;
   }
@@ -1293,6 +1362,11 @@ function createInventoryRow(item) {
     : canRequestRestock
     ? `<button class="request-button${requestSaved ? " is-sent" : ""}" type="button" data-request-key="${escapeHTML(item.requestKey)}" ${requestSaved ? "disabled" : ""}>${requestSaved ? "Request Saved ✓" : "Save Local Request"}</button>`
     : '<span class="no-action">No action needed</span>';
+  const lotMarkup = Array.isArray(item.lots) && item.lots.length > 0
+    ? `<details class="lot-details"><summary>${item.lots.length} lot${item.lots.length === 1 ? "" : "s"}</summary>${item.lots.map((lot) =>
+      `<span>${escapeHTML(lot.lotCode || "Unlabeled lot")} · ${escapeHTML(lot.expirationDate || "No expiry")} · ${formatWholeNumber(lot.quantity)} units</span>`
+    ).join("")}</details>`
+    : "";
 
   row.innerHTML = `
     <td><span class="status-badge ${item.status}"><span aria-hidden="true"></span>${getStatusLabel(item.status)}</span></td>
@@ -1300,7 +1374,7 @@ function createInventoryRow(item) {
     <td>${escapeHTML(item.brand)}</td>
     <td>${formatWholeNumber(item.currentStock)}</td>
     <td>${formatWholeNumber(item.restockAt)}</td>
-    <td class="expiry-value ${getExpiryClass(item.daysToExpiry)}">${formatExpiry(item.daysToExpiry)}</td>
+    <td class="expiry-value ${getExpiryClass(item.daysToExpiry, item.expirationWarningDays)}">${formatExpiry(item.daysToExpiry)}${lotMarkup}</td>
     <td>${actionMarkup}</td>
   `;
   return row;
@@ -1408,10 +1482,10 @@ function getStatusLabel(status) {
   return labels[status] || "Needs Review";
 }
 
-function getExpiryClass(days) {
+function getExpiryClass(days, warningDays = 14) {
   if (days === null) return "";
   if (days <= CRITICAL_EXPIRY_DAYS) return "critical-expiry";
-  if (isExpiringSoon(days)) return "warning-expiry";
+  if (isExpiringSoon(days, warningDays)) return "warning-expiry";
   return "";
 }
 

@@ -133,9 +133,10 @@ const FreshRouteReconciliationUI = (() => {
             <td>${formatQuantity(change.usableUnits)}</td>
             <td>${formatQuantity(change.beforeQuantity)}</td>
             <td><strong>${formatQuantity(change.afterQuantity)}</strong></td>
+            <td>${(change.lotDetails || []).map((lot) => `<span class="table-detail">${escapeHTML(lot.lotCode || "Unlabeled lot")} · ${escapeHTML(lot.expirationDate || "No expiry")}</span>`).join("") || "—"}</td>
           </tr>
         `).join("")
-        : '<tr class="empty-row"><td colspan="6">No inventory quantities will change.</td></tr>';
+        : '<tr class="empty-row"><td colspan="7">No inventory quantities will change.</td></tr>';
       const blockers = prepared.errors.length > 0 && !decision
         ? `<div class="approval-blockers" role="alert"><strong>Approval is blocked:</strong><ul>${prepared.errors.map((error) => `<li>${escapeHTML(error)}</li>`).join("")}</ul></div>`
         : "";
@@ -169,7 +170,7 @@ const FreshRouteReconciliationUI = (() => {
         <div class="table-wrapper reconciliation-table-wrapper">
           <table class="reconciliation-table">
             <caption>Inventory comparison for this delivery</caption>
-            <thead><tr><th scope="col">Product</th><th scope="col">Received</th><th scope="col">Damaged</th><th scope="col">Usable</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+            <thead><tr><th scope="col">Product</th><th scope="col">Received</th><th scope="col">Damaged</th><th scope="col">Usable</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Lot / expiry</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -255,6 +256,7 @@ const FreshRouteReconciliationUI = (() => {
             <div class="receiving-field"><label for="${formId}-name">Product name</label><input id="${formId}-name" name="productName" value="${escapeHTML(item.productName)}" maxlength="160" required></div>
             <div class="receiving-field"><label for="${formId}-brand">Brand</label><input id="${formId}-brand" name="brand" value="${escapeHTML(item.brand)}" maxlength="120" required></div>
             <div class="receiving-field"><label for="${formId}-supplier">Supplier</label><input id="${formId}-supplier" name="supplier" value="${escapeHTML(record.supplier)}" readonly></div>
+            ${item.lotCode || item.expirationDate ? `<div class="receiving-field"><label for="${formId}-lot">Batch or lot</label><input id="${formId}-lot" name="lotCode" value="${escapeHTML(item.lotCode || "")}" readonly></div><div class="receiving-field"><label for="${formId}-expiration">Expiration date</label><input id="${formId}-expiration" name="expirationDate" type="date" value="${escapeHTML(item.expirationDate || "")}" readonly></div>` : ""}
             <div class="receiving-field"><label for="${formId}-unit">Measurement unit</label><select id="${formId}-unit" name="measurementUnit"><option value="each">each</option><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="mL">mL</option></select></div>
             <div class="receiving-field"><label for="${formId}-received">Received quantity</label><input id="${formId}-received" name="receivedQuantity" type="number" min="0" step="any" value="${item.totalUnits}" readonly></div>
             <div class="receiving-field"><label for="${formId}-damaged">Damaged quantity</label><input id="${formId}-damaged" name="damagedQuantity" type="number" min="0" step="any" value="${item.totalDamagedUnits}" readonly></div>

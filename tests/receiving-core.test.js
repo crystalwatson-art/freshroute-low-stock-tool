@@ -138,6 +138,23 @@ test("rejects product identifiers that exceed the field limits", () => {
   assert.match(result.errors.join(" "), /120 characters or fewer/);
 });
 
+test("requires paired batch and expiration fields while accepting valid lot data", () => {
+  const missingDate = calculate({
+    sku: "MILK-LOT", productName: "Milk", lotCode: "LOT-001",
+    boxesPerRow: 1, layers: 1, unitsPerBox: 12
+  });
+  assert.equal(missingDate.valid, false);
+  assert.match(missingDate.errors.join(" "), /both a batch or lot and an expiration date/);
+
+  const valid = calculate({
+    sku: "MILK-LOT", productName: "Milk", lotCode: "LOT-001", expirationDate: "2030-01-15",
+    boxesPerRow: 1, layers: 1, unitsPerBox: 12
+  });
+  assert.equal(valid.valid, true);
+  assert.equal(valid.item.lotCode, "LOT-001");
+  assert.equal(valid.item.expirationDate, "2030-01-15");
+});
+
 test("summarizes multiple received items for supervisor review", () => {
   const first = calculate({
     sku: "A",

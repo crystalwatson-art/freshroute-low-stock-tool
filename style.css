@@ -1013,6 +1013,24 @@ h1 {
   border-color: color-mix(in srgb, var(--green) 45%, transparent);
 }
 
+.lot-details {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.lot-details summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.lot-details span,
+.table-detail {
+  display: block;
+  white-space: nowrap;
+}
+
 .data-source-actions {
   align-items: stretch;
   flex-direction: column;

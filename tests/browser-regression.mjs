@@ -285,6 +285,8 @@ async function run() {
         "receiving-sku": "__SKU__",
         "receiving-product-name": "__NAME__",
         "receiving-brand": "__BRAND__",
+        "receiving-lot-code": "BROWSER-LOT-001",
+        "receiving-expiration-date": "2030-01-15",
         "boxes-per-row": "2",
         "receiving-layers": "2",
         "units-per-box": "6",
@@ -307,9 +309,10 @@ async function run() {
       await cdp.evaluate('document.getElementById("saved-receiving-description").textContent'),
       /only in this browser/i
     );
+    await cdp.evaluate('document.querySelector("[data-review-record]").click()');
+    assert.match(await cdp.evaluate('document.getElementById("reconciliation-review").textContent'), /BROWSER-LOT-001/);
     pass("receiving record saves locally with damaged quantities separated");
 
-    await cdp.evaluate('document.querySelector("[data-review-record]").click()');
     const comparison = await cdp.evaluate(`(() => {
       const cells = [...document.querySelectorAll(".reconciliation-table tbody td")].map((cell) => cell.textContent.trim());
       return { cells, warning: document.querySelector(".prototype-warning").textContent.trim() };

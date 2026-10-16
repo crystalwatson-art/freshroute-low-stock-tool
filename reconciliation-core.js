@@ -80,18 +80,29 @@ const FreshRouteReconciliation = (() => {
         receivedUnits: 0,
         damagedUnits: 0,
         usableUnits: 0,
-        beforeQuantity: inventoryItem.currentStock
+        beforeQuantity: inventoryItem.currentStock,
+        lotDetails: []
       };
       existing.receivedUnits += receivedItem.totalUnits;
       existing.damagedUnits += receivedItem.totalDamagedUnits;
       existing.usableUnits += receivedItem.usableUnits;
+      if (receivedItem.lotCode || receivedItem.expirationDate) {
+        const lotDetail = {
+          lotCode: cleanText(receivedItem.lotCode),
+          expirationDate: cleanText(receivedItem.expirationDate)
+        };
+        if (!existing.lotDetails.some((lot) =>
+          lot.lotCode === lotDetail.lotCode && lot.expirationDate === lotDetail.expirationDate
+        )) existing.lotDetails.push(lotDetail);
+      }
       grouped.set(inventoryItem.requestKey, existing);
     });
 
     return {
       errors,
-      changes: [...grouped.values()].map((change) => ({
+      changes: [...grouped.values()].map(({ lotDetails, ...change }) => ({
         ...change,
+        ...(lotDetails.length > 0 ? { lotDetails } : {}),
         deltaUnits: change.usableUnits,
         afterQuantity: change.beforeQuantity + change.usableUnits
       })),
@@ -258,6 +269,8 @@ const FreshRouteReconciliation = (() => {
           receivedQuantity: received.value,
           damagedQuantity: damaged.value,
           acceptedQuantity: accepted.value,
+          lotCode: cleanText(item.lotCode),
+          expirationDate: cleanText(item.expirationDate),
           lowStockThreshold: lowStock.value,
           reorderThreshold: reorder.value
         }

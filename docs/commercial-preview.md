@@ -5,7 +5,7 @@ The commercial path is implemented but is intentionally inactive until a Supabas
 ## Supabase setup
 
 1. Create a disposable development Supabase project. Do not use the production project for migration testing.
-2. Apply migrations `001` through `005` in order using the Supabase SQL editor or a reviewed migration pipeline. Do not apply them from the browser and do not skip the isolated PostgreSQL test first.
+2. Apply migrations `001` through `006` in order using the Supabase SQL editor or a reviewed migration pipeline. Do not apply them from the browser and do not skip the isolated PostgreSQL test first.
 3. In Authentication, enable the selected email sign-in and recovery method. Set the project Site URL and redirect allow-list to the Vercel preview URL and its `#settings` recovery route.
 4. Configure the invitation email template to include the invitation metadata supplied by the server (`freshroute_invitation_id` and `freshroute_invitation_token`) in a link back to the app's invitation acceptance view. Keep the token out of logs and analytics.
 5. Decide whether email confirmation, MFA, session lifetime, invitation expiry, and password policy meet the launch policy. The database invitation expires after seven days.
@@ -27,10 +27,11 @@ After setting variables, redeploy the preview. A successful `/api/config` respon
 
 1. Create a test account in the isolated project and sign in from Settings.
 2. Invite a second test account as Worker and Supervisor; confirm the recipient accepts the invitation before seeing business data.
-3. Record a delivery. Known product lines and unfamiliar SKU lines are saved by one PostgreSQL transaction. Repeat the request with the same idempotency key and confirm one delivery only.
+3. Record a delivery, including a batch/lot and expiration date when the stock is dated. Confirm two lots for one SKU retain separate quantities and dates. Known product lines and unfamiliar SKU lines are saved by one PostgreSQL transaction. Repeat the request with the same idempotency key and confirm one delivery only.
 4. Confirm a Worker cannot approve a delivery or new product. Approve as Supervisor and confirm only accepted usable quantity creates immutable inventory movement rows.
 5. Repeat approval and run concurrent approvals; confirm one transaction and one audit trail. Test a second business account for cross-tenant denial.
 6. Test recovery email, sign-out, expired/revoked invitation, interrupted network retry, duplicate SKU, invalid quantities, correction request, rejection, and failed transaction rollback.
+7. As an Administrator, set a product-specific expiration warning period. Confirm the Inventory workspace marks matching lots as expiring soon and that an expired lot cannot be approved as usable stock.
 
 ## Backups and launch requirements
 

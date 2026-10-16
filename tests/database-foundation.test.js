@@ -22,6 +22,10 @@ const newProduct = readFileSync(
   join(ROOT, "database/migrations/004_new_product_review.sql"),
   "utf8"
 );
+const expiration = readFileSync(
+  join(ROOT, "database/migrations/006_expiration_tracking.sql"),
+  "utf8"
+);
 
 const TENANT_TABLES = [
   "businesses",
@@ -175,4 +179,30 @@ test("JWT identity extraction remains private and is the only commercial actor i
   assert.match(access, /revoke all on function app_private\.current_user_id\(\) from public/);
   assert.match(access, /grant execute on function app_private\.current_user_id\(\) to authenticated/);
   assert.match(access, /membership\.user_id = app_private\.current_user_id\(\)/);
+});
+
+test("expiration tracking is lot-aware, configurable, and approval-protected", () => {
+  assert.match(expiration, /expiration_warning_days integer not null default 14/);
+  assert.match(expiration, /create view inventory_lot_balances/);
+  assert.match(expiration, /create function app_private\.ensure_inventory_lot/);
+  assert.doesNotMatch(expiration, /grant execute on function app_private\.ensure_inventory_lot[^;]*to authenticated/);
+  assert.match(expiration, /new_product_reviews_lot_pair/);
+  assert.match(expiration, /Expired lots cannot be approved as usable inventory/);
+  assert.match(expiration, /create (?:or replace )?function update_product_expiration_warning/);
+  assert.match(expiration, /array\['administrator'\]::app_role\[\]/);
+  assert.match(expiration, /movements_attach_adjustment_line_lot/);
+  assert.match(expiration, /movements_block_expired_usable_stock/);
+  assert.match(expiration, /create or replace function app_private\.prevent_expired_inventory_movement/);
+});
+
+test("expiration data is visible in receiving and reconciliation workspaces", () => {
+  const index = readFileSync(join(ROOT, "index.html"), "utf8");
+  const receiving = readFileSync(join(ROOT, "receiving-core.js"), "utf8");
+  const reconciliation = readFileSync(join(ROOT, "reconciliation-ui.js"), "utf8");
+  assert.match(index, /id="receiving-lot-code"/);
+  assert.match(index, /id="receiving-expiration-date"/);
+  assert.match(receiving, /lotCode/);
+  assert.match(receiving, /expirationDate/);
+  assert.match(reconciliation, /Lot \/ expiry/);
+  assert.match(reconciliation, /data-new-product-review/);
 });

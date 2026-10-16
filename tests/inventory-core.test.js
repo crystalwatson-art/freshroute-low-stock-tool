@@ -125,6 +125,14 @@ test("date calculations use calendar days and include today in expiring soon", (
   assert.equal(core.isExpiringSoon(15), false);
 });
 
+test("commercial-style product warning periods override the default expiration window", () => {
+  assert.equal(core.isExpiringSoon(10, 14), true);
+  assert.equal(core.isExpiringSoon(10, 7), false);
+  assert.equal(core.getDisplayStatus("adequate-stock", 10, 7), "healthy-stock");
+  assert.equal(core.getDisplayStatus("adequate-stock", 7, 7), "expiring-soon");
+  assert.equal(core.getDisplayStatus("adequate-stock", -1, 3650), "expired");
+});
+
 test("inventory classification separates low, reorder-soon, and adequate stock", () => {
   assert.equal(core.classifyStock(10, 10), "low-stock");
   assert.equal(core.classifyStock(11, 10), "reorder-soon");

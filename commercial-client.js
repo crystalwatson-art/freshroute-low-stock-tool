@@ -9,6 +9,7 @@
   let supabaseClient = null;
   let session = null;
   let activeBusinessId = null;
+  let activeRole = null;
   let resolveReady;
   const ready = new Promise((resolve) => { resolveReady = resolve; });
 
@@ -17,6 +18,7 @@
     ready,
     get session() { return session; },
     get activeBusinessId() { return activeBusinessId; },
+    get activeRole() { return activeRole; },
     get isAuthenticated() { return Boolean(session?.access_token); },
     async signIn(email, password) {
       await ready;
@@ -63,7 +65,9 @@
             total_units: item.totalUnits,
             units_per_box: item.unitsPerBox,
             damaged_boxes: item.damagedBoxes,
-            damaged_units: item.damagedUnits
+            damaged_units: item.damagedUnits,
+            lot_code: item.lotCode || null,
+            expiration_date: item.expirationDate || null
           }))
         }
       });
@@ -85,6 +89,11 @@
     async decideDelivery({ deliveryId, decision, reason, idempotencyKey }) {
       return request("/api/reconciliation/delivery", {
         method: "POST", body: { deliveryId, decision, reason, idempotencyKey }
+      });
+    },
+    async updateExpirationWarning({ productId, warningDays }) {
+      return request(`/api/inventory?businessId=${encodeURIComponent(activeBusinessId)}`, {
+        method: "PATCH", body: { productId, warningDays }
       });
     },
     async invite({ businessId, email, role }) {
@@ -180,7 +189,9 @@
     });
     if (!response.ok) throw new Error("The signed-in profile could not be loaded.");
     const profile = await response.json();
-    activeBusinessId = profile.memberships?.[0]?.business_id || null;
+    const membership = profile.memberships?.[0] || null;
+    activeBusinessId = membership?.business_id || null;
+    activeRole = membership?.role || null;
   }
 
   window.FreshRouteCommercial = api;
