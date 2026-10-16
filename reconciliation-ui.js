@@ -10,6 +10,10 @@ const FreshRouteReconciliationUI = (() => {
       getInventory,
       getSourceKey,
       getSourceLabel,
+      getStorageStatus = () => ({
+        countSuffix: "saved locally",
+        description: "Records stay only in this browser. They are not sent to suppliers or a server."
+      }),
       setRecords = () => {},
       onInventoryChanged
     } = options;
@@ -35,8 +39,11 @@ const FreshRouteReconciliationUI = (() => {
 
     function render() {
       const records = getRecords();
+      const storageStatus = getStorageStatus();
       document.getElementById("saved-receiving-count").textContent =
-        `${records.length.toLocaleString()} saved locally`;
+        `${records.length.toLocaleString()} ${storageStatus.countSuffix}`;
+      const storageDescription = document.getElementById("saved-receiving-description");
+      if (storageDescription) storageDescription.textContent = storageStatus.description;
 
       if (records.length === 0) {
         list.innerHTML = '<li class="saved-receiving-empty">No receiving records saved yet.</li>';

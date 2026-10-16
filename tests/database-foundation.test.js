@@ -163,5 +163,16 @@ test("authenticated commercial migration has server-only receiving and invitatio
   assert.match(migration, /create function decide_receiving_delivery/);
   assert.match(migration, /create table receiving_delivery_events/);
   assert.match(migration, /receiving_delivery_events_are_immutable/);
+  assert.match(migration, /duplicate SKU and brand lines/);
+  assert.match(migration, /verified_email is null or verified_email = ''/);
   assert.match(migration, /grant execute on function record_receiving_delivery/);
+});
+
+test("JWT identity extraction remains private and is the only commercial actor identity", () => {
+  const access = readFileSync(join(ROOT, "database/migrations/002_access_control_and_approval.sql"), "utf8");
+  assert.match(access, /create function app_private\.current_user_id\(\)/);
+  assert.match(access, /current_setting\('request\.jwt\.claim\.sub', true\)/);
+  assert.match(access, /revoke all on function app_private\.current_user_id\(\) from public/);
+  assert.match(access, /grant execute on function app_private\.current_user_id\(\) to authenticated/);
+  assert.match(access, /membership\.user_id = app_private\.current_user_id\(\)/);
 });

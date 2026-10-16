@@ -303,6 +303,10 @@ async function run() {
     assert.equal(await cdp.evaluate('!document.getElementById("reconciliation-page").hidden'), true);
     assert.equal(await cdp.evaluate('document.querySelectorAll("[data-review-record]").length'), 1);
     assert.match(await cdp.evaluate('document.getElementById("saved-receiving-count").textContent'), /1 saved locally/);
+    assert.match(
+      await cdp.evaluate('document.getElementById("saved-receiving-description").textContent'),
+      /only in this browser/i
+    );
     pass("receiving record saves locally with damaged quantities separated");
 
     await cdp.evaluate('document.querySelector("[data-review-record]").click()');

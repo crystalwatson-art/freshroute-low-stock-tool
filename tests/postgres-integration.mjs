@@ -974,11 +974,46 @@ reset role;
   pass("cross-tenant access is denied and duplicate product creation is blocked");
 
   runSql(String.raw`
+set role authenticated;
+select set_config('request.jwt.claim.sub', '', false);
+do $$
+begin
+  if (select count(*) from businesses) <> 0 then
+    raise exception 'A session without a JWT subject could read tenant records';
+  end if;
+end;
+$$;
+reset role;
+  `);
+  pass("sessions without a verified JWT subject cannot read business data");
+
+  runSql(String.raw`
 reset role;
 create table freshroute_test_ids (delivery_id uuid, replay_delivery_id uuid, review_id uuid, invitation_id uuid);
 grant select, insert on freshroute_test_ids to authenticated;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', false);
+do $$
+declare blocked boolean := false;
+begin
+  begin
+    perform record_receiving_delivery(
+      '10000000-0000-0000-0000-000000000001',
+      'commercial-duplicate-lines-001',
+      '{"supplier":"Commercial Supplier","delivered_on":"2026-10-15"}'::jsonb,
+      '[
+        {"sku":"NEW-DUPLICATE","product_name":"Duplicate One","brand":"Duplicate Brand","total_units":2,"damaged_units":0},
+        {"sku":"NEW-DUPLICATE","product_name":"Duplicate Two","brand":"Duplicate Brand","total_units":3,"damaged_units":0}
+      ]'::jsonb
+    );
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Duplicate commercial receiving lines were accepted'; end if;
+  if exists (select 1 from receiving_deliveries where client_idempotency_key = 'commercial-duplicate-lines-001') then
+    raise exception 'Duplicate receiving rejection left a delivery behind';
+  end if;
+end;
+$$;
 insert into freshroute_test_ids (delivery_id)
 select (record_receiving_delivery(
   '10000000-0000-0000-0000-000000000001',
@@ -1063,6 +1098,20 @@ insert into app_users (id, email, display_name)
 values ('20000000-0000-0000-0000-000000000007', 'invited-commercial@example.test', 'Invited Commercial');
 set role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000007', false);
+select set_config('request.jwt.claim.email', 'different-account@example.test', false);
+do $$
+declare blocked boolean := false;
+begin
+  begin
+    perform accept_business_invitation(
+      (select invitation_id from freshroute_test_ids where invitation_id is not null limit 1),
+      'commercial-invite-token', 'invited-commercial@example.test', 'Invited Commercial'
+    );
+  exception when others then blocked := true;
+  end;
+  if not blocked then raise exception 'Invitation accepted with an untrusted email claim'; end if;
+end;
+$$;
 select set_config('request.jwt.claim.email', 'invited-commercial@example.test', false);
 select accept_business_invitation(
   (select invitation_id from freshroute_test_ids where invitation_id is not null limit 1),

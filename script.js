@@ -116,6 +116,19 @@ document.addEventListener("DOMContentLoaded", () => {
     getInventory: () => inventoryData,
     getSourceKey: getCurrentSourceKey,
     getSourceLabel: getCurrentSourceLabel,
+    getStorageStatus: () => {
+      const commercial = window.FreshRouteCommercial;
+      if (dataMode === "commercial" && commercial?.isAuthenticated && commercial.activeBusinessId) {
+        return {
+          countSuffix: "saved in commercial database",
+          description: "Records are stored in the authenticated business database and remain isolated to this business."
+        };
+      }
+      return {
+        countSuffix: "saved locally",
+        description: "Records stay only in this browser. They are not sent to suppliers or a server."
+      };
+    },
     setRecords: (records) => { receivingRecords = records; },
     onInventoryChanged: refreshInventoryAfterReconciliation
   });

@@ -273,6 +273,19 @@ begin
     raise exception 'At least one receiving item is required.';
   end if;
 
+  if exists (
+    select 1
+    from (
+      select lower(trim(coalesce(value->>'sku', ''))) as sku,
+             lower(trim(coalesce(value->>'brand', ''))) as brand
+      from jsonb_array_elements(item_payload)
+      group by 1, 2
+      having count(*) > 1
+    ) duplicate_items
+  ) then
+    raise exception 'A receiving delivery cannot contain duplicate SKU and brand lines.';
+  end if;
+
   if trim(coalesce(delivery_payload->>'supplier', '')) = ''
      or trim(coalesce(delivery_payload->>'delivered_on', '')) = '' then
     raise exception 'Supplier and delivery date are required.';
